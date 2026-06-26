@@ -14,7 +14,7 @@ MLFLOW_MODEL_NAME = os.getenv("MLFLOW_MODEL_NAME", "resnet18-mango-qc")
 MLFLOW_MODEL_STAGE = os.getenv("MLFLOW_MODEL_STAGE", "Production")
 MLFLOW_EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "mango-thermal-qc")
 
-CLASS_NAMES = ["sano", "necrosis_celular", "desorden_metabolico"]
+CLASS_NAMES = ["defectuoso", "sano"]
 NUM_CLASSES = len(CLASS_NAMES)
 
 IMAGE_SIZE = 224
