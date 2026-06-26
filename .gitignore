@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+mlruns/
+mlartifacts/
+*.egg-info/
+.env
+dataset_mangos/
+*.pt
+*.pth
+.ipynb_checkpoints/

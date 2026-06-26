@@ -1,0 +1,26 @@
+{
+  "descripcion": "Manifiesto de linaje del Data Lake distribuido en HDFS. Registra la procedencia, particion y etiqueta diagnostica de cada imagen termica del dataset consolidado de 1066 mangos reales. No contiene los binarios de imagen, solo su referencia en HDFS.",
+  "version_dataset": "1.0.0",
+  "total_imagenes": 1066,
+  "ruta_base_hdfs": "hdfs://nodo-maestro:9000/data-lake/mangos/raw/",
+  "esquema_etiquetas": {
+    "0": "sano",
+    "1": "necrosis_celular",
+    "2": "desorden_metabolico"
+  },
+  "estrategia_particion": "train_test_split estratificado, test_size=0.2, random_state=42",
+  "registros": [
+    {
+      "id_muestra": "mango_0001",
+      "uri_hdfs": "hdfs://nodo-maestro:9000/data-lake/mangos/raw/mango_0001.png",
+      "etiqueta": 0,
+      "particion": "train"
+    },
+    {
+      "id_muestra": "mango_0002",
+      "uri_hdfs": "hdfs://nodo-maestro:9000/data-lake/mangos/raw/mango_0002.png",
+      "etiqueta": 1,
+      "particion": "test"
+    }
+  ]
+}
