@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ThermoMango — Panel de Análisis Térmico</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="marca">
+      <div class="marca-icono"></div>
+      <div>
+        <div class="marca-nombre">ThermoMango</div>
+        <div class="marca-sub">VISIÓN COMPUTACIONAL</div>
+      </div>
+    </div>
+
+    <nav class="nav-grupo">
+      <div class="nav-titulo">ANÁLISIS</div>
+      <button class="nav-link activo"><span class="punto-nav"></span> Dashboard</button>
+      <button class="nav-link"><span class="punto-nav"></span> Mapa Térmico</button>
+      <button class="nav-link"><span class="punto-nav"></span> Clasificador IA</button>
+      <button class="nav-link"><span class="punto-nav"></span> Vista 3D</button>
+    </nav>
+
+    <nav class="nav-grupo">
+      <div class="nav-titulo">DATOS</div>
+      <button class="nav-link"><span class="punto-nav"></span> Muestras</button>
+      <button class="nav-link"><span class="punto-nav"></span> Reportes</button>
+      <button id="nav-configuracion" class="nav-link"><span class="punto-nav"></span> Configuración</button>
+    </nav>
+
+    <div class="sidebar-usuario">
+      <div class="avatar">IR</div>
+      <div>
+        <div class="usuario-nombre">Ing. Ramírez</div>
+        <div class="usuario-rol">Analista Térmico</div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="contenido">
+
+    <div class="encabezado">
+      <div>
+        <h1>Panel de Análisis Térmico</h1>
+        <p class="meta" id="meta-sesion">Sesión activa · Lote #MNG-2024-047 · Última actualización —</p>
+      </div>
+      <div class="encabezado-acciones">
+        <span id="pill-estado-backend" class="pill en-vivo"><span class="dot"></span> CONECTANDO</span>
+        <input type="file" id="input-imagen" accept="image/*">
+        <button id="btn-importar" class="boton">⬆ Importar Imagen</button>
+        <button id="btn-analizar" class="boton boton-primario">▶ Analizar</button>
+      </div>
+    </div>
+
+    <section class="tarjetas-stats" id="tarjetas-stats" aria-label="Indicadores principales"></section>
+
+    <section class="panel">
+      <div class="panel-titulo">
+        <h2>🌡 Visualización 3D Holográfica — Tres Estados Térmicos</h2>
+        <div class="segmentado" id="selector-modo">
+          <button data-modo="ir">Espectro IR</button>
+          <button data-modo="holografico" class="activo">Holográfico</button>
+          <button data-modo="diferencial">Diferencial</button>
+        </div>
+      </div>
+
+      <div class="grilla-principal">
+        <div id="holo-grilla" class="holo-grilla"></div>
+
+        <div class="panel-derecha" style="display:flex; flex-direction:column; gap:16px;">
+          <div class="panel" style="margin:0;">
+            <div class="panel-titulo"><h2>📊 Clasificación por Lote</h2></div>
+            <div id="lista-clasificacion" class="lista-clasificacion"></div>
+          </div>
+
+          <div class="panel" style="margin:0;">
+            <div class="panel-titulo"><h2>⚙ Parámetros del Análisis</h2></div>
+            <div id="grilla-parametros" class="grilla-parametros"></div>
+          </div>
+
+          <div class="panel" style="margin:0;">
+            <div class="panel-titulo"><h2>🟦 Zonas de Temperatura</h2></div>
+            <div class="barra-gradiente"></div>
+            <div class="barra-gradiente-ejes"><span>15°C</span><span>42°C</span></div>
+            <div id="grilla-zonas" class="grilla-zonas"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-hdfs" class="panel">
+      <div class="panel-titulo">
+        <h2>🚚 Ingesta HDFS + Stream Kafka (evaluación online)</h2>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span id="hdfs-pill" class="estado-pill sin_iniciar">sin datos</span>
+          <button id="btn-fallo-sensor" class="boton" title="Simula condensación en la lente FLIR">❄ Simular fallo sensor</button>
+        </div>
+      </div>
+      <div class="entrenamiento-fila">
+        <span class="entrenamiento-info">Lotes pendientes en el Data Lake: <strong id="hdfs-pendientes">—</strong></span>
+        <span class="entrenamiento-info">Próxima llegada estimada: <strong id="hdfs-proxima">—</strong></span>
+      </div>
+      <p class="entrenamiento-info" id="hdfs-detalle" style="margin-top:8px;">
+        El sensor del camión aterriza un lote nuevo cada 5 min en el Data Lake. Pulsa <strong>Analizar</strong> para
+        procesar en paralelo (data parallelism entre workers, misma precisión) todos los lotes acumulados desde la
+        última vez.
+      </p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-titulo">
+        <h2>📈 Distribución Térmica por Estado</h2>
+        <button id="btn-exportar" class="boton">⬇ Exportar</button>
+      </div>
+      <div class="contenedor-grafica">
+        <canvas id="grafica-distribucion" width="900" height="220"></canvas>
+      </div>
+      <div class="leyenda-grafica">
+        <span class="item"><span class="punto" style="background:#2f6fed"></span> Verde / Inmaduro (15–21°C)</span>
+        <span class="item"><span class="punto" style="background:#1f9d6b"></span> Maduro / Óptimo (22–32°C)</span>
+        <span class="item"><span class="punto" style="background:#dc2626"></span> Sobre-Maduro (33–42°C)</span>
+      </div>
+    </section>
+
+    <section id="panel-entrenamiento" class="panel">
+      <div class="panel-titulo">
+        <h2>🧠 Entrenamiento del Modelo (CNN ResNet-50 · por épocas)</h2>
+        <button id="btn-entrenar" class="boton">▶ Iniciar entrenamiento</button>
+      </div>
+      <div class="entrenamiento-fila">
+        <span id="estado-entrenamiento-pill" class="estado-pill sin_iniciar">sin iniciar</span>
+        <div class="entrenamiento-barra"><div id="entrenamiento-barra-relleno"></div></div>
+        <span id="entrenamiento-texto" class="entrenamiento-info">Sin entrenamientos registrados todavía.</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-titulo"><h2>🖼 Muestras Recientes</h2></div>
+      <div class="tira-muestras" id="tira-muestras">
+        <button class="muestra-agregar" id="btn-agregar-muestra" title="Importar imagen">+</button>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div id="toast" class="toast oculto"></div>
+
+<script src="js/apiClient.js"></script>
+<script src="js/mango3dRenderer.js"></script>
+<script src="js/chartsRenderer.js"></script>
+<script src="js/uiRenderer.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

@@ -11,3 +11,21 @@ dataset_mangos/
 *.pt
 *.pth
 .ipynb_checkpoints/
+
+# Bases de datos / estado runtime locales
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Logs y temporales
+*.log
+*.tmp
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Editores / IDE
+.vscode/
+.idea/
+*.swp

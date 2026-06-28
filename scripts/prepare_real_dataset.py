@@ -28,14 +28,22 @@ MANIFIESTO_SALIDA = RAIZ / "data" / "hdfs_manifest.json"
 
 CLASES_FINALES = ["alta_calidad", "calidad_promedio", "defectuoso"]
 
+# IMPORTANTE: solo se usa v1i_multiclass. La fuente v3i_multiclass se descarto
+# a proposito: su taxonomia es de CALIDAD (fresh/good/spoil), un eje conceptual
+# distinto al de MADUREZ (Raw/Ripened/defective) de v1i. Fusionar ambas
+# contaminaba las clases (p.ej. "alta_calidad" mezclaba mangos frescos de v3i
+# con mangos verdes inmaduros de v1i, visualmente opuestos), lo que hacia que
+# el modelo no pudiera separar alta_calidad de calidad_promedio (F1=0.00).
+#
+# El mapeo de v1i respeta la semantica de MADUREZ del dashboard (MATURITY_INFO
+# en src/config.py):
+#   Raw (verde/inmaduro)  -> calidad_promedio -> "Verde / Inmaduro"
+#   Ripened (maduro)      -> alta_calidad     -> "Maduro / Optimo"
+#   defective (danado)    -> defectuoso       -> "Sobre-Maduro"
 FUENTES = {
-    "v3i": {
-        "carpeta": EXTRAIDOS / "v3i_multiclass",
-        "mapa_columnas": {"fresh": "alta_calidad", "good": "calidad_promedio", "spoil": "defectuoso"},
-    },
     "v1i": {
         "carpeta": EXTRAIDOS / "v1i_multiclass",
-        "mapa_columnas": {"Raw": "alta_calidad", "Ripened": "calidad_promedio", "defective": "defectuoso"},
+        "mapa_columnas": {"Raw": "calidad_promedio", "Ripened": "alta_calidad", "defective": "defectuoso"},
     },
 }
 
