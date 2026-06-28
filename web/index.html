@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ThermoMango — Panel de Análisis Térmico</title>
 <link rel="stylesheet" href="css/styles.css">
+<script>
+  // Aplica el tema guardado ANTES de pintar, para evitar el parpadeo de tema claro -> oscuro/neon.
+  document.documentElement.dataset.tema = localStorage.getItem("thermomango_tema") || "claro";
+</script>
 </head>
 <body>
 
@@ -52,6 +56,11 @@
       </div>
       <div class="encabezado-acciones">
         <span id="pill-estado-backend" class="pill en-vivo"><span class="dot"></span> CONECTANDO</span>
+        <div class="segmentado" id="selector-tema" title="Modo de visualización">
+          <button data-tema="claro" class="activo">☀ Claro</button>
+          <button data-tema="oscuro">🌙 Oscuro</button>
+          <button data-tema="neon">⚡ Neón</button>
+        </div>
         <input type="file" id="input-imagen" accept="image/*">
         <button id="btn-importar" class="boton">⬆ Importar Imagen</button>
         <button id="btn-analizar" class="boton boton-primario">▶ Analizar</button>

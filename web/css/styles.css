@@ -15,6 +15,54 @@
   --radius: 12px;
   --font: -apple-system, "Segoe UI", Roboto, sans-serif;
   --sidebar-w: 220px;
+  --glow-modo: none;
+}
+
+/* ---------- Modo Oscuro ---------- */
+:root[data-tema="oscuro"] {
+  --bg: #11161c;
+  --surface: #181f27;
+  --border: #2a3441;
+  --text: #e8edf2;
+  --text-muted: #93a3b3;
+  --accent: #2fbf83;
+  --accent-soft: #163829;
+  --blue: #5b8def;
+  --blue-soft: #16243f;
+  --red: #f0605c;
+  --red-soft: #3a1d1c;
+  --amber: #f0a93f;
+  --amber-soft: #3a2c12;
+}
+
+/* ---------- Modo Neon ---------- */
+:root[data-tema="neon"] {
+  --bg: #05080f;
+  --surface: #0b1020;
+  --border: #1c2a45;
+  --text: #e6fbff;
+  --text-muted: #7fa8c9;
+  --accent: #39ff9f;
+  --accent-soft: #0d2a1f;
+  --blue: #4fd6ff;
+  --blue-soft: #0d2230;
+  --red: #ff4d6d;
+  --red-soft: #2b0d15;
+  --amber: #ffd23f;
+  --amber-soft: #2c2308;
+  --glow-modo: 0 0 6px currentColor;
+}
+
+:root[data-tema="neon"] .panel,
+:root[data-tema="neon"] .tarjeta-stat,
+:root[data-tema="neon"] .sidebar {
+  box-shadow: 0 0 1px var(--accent), 0 0 18px -8px var(--accent);
+}
+
+:root[data-tema="neon"] .panel-titulo h2,
+:root[data-tema="neon"] .marca-nombre,
+:root[data-tema="neon"] .tarjeta-stat .valor {
+  text-shadow: var(--glow-modo);
 }
 
 * { box-sizing: border-box; }
@@ -26,6 +74,7 @@ body {
   font-family: var(--font);
   line-height: 1.45;
   font-size: 14px;
+  transition: background-color .25s, color .25s;
 }
 
 a, button { font-family: inherit; }

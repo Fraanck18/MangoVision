@@ -25,6 +25,7 @@ let cicloPollingMetrica = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   renderTodo();
+  inicializarSelectorTema();
 
   document.getElementById("btn-importar").addEventListener("click", () => abrirSelectorImagen());
   document.getElementById("btn-agregar-muestra").addEventListener("click", () => abrirSelectorImagen());
@@ -274,6 +275,29 @@ function exportarEstadoComoJSON() {
   enlace.download = "distribucion_termica.json";
   enlace.click();
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Selector de tema (Claro / Oscuro / Neón). El tema se guarda en localStorage
+ * y se aplica mediante el atributo data-tema en <html>, que styles.css usa
+ * para sobreescribir las variables CSS (--bg, --surface, --text, etc.). El
+ * script inline en <head> ya aplico el tema guardado antes de pintar, para
+ * que aqui solo falte sincronizar cual boton se ve "activo".
+ */
+function inicializarSelectorTema() {
+  const temaActual = document.documentElement.dataset.tema || "claro";
+  document.querySelectorAll("#selector-tema button").forEach((boton) => {
+    boton.classList.toggle("activo", boton.dataset.tema === temaActual);
+    boton.addEventListener("click", () => cambiarTema(boton.dataset.tema));
+  });
+}
+
+function cambiarTema(tema) {
+  document.documentElement.dataset.tema = tema;
+  localStorage.setItem("thermomango_tema", tema);
+  document.querySelectorAll("#selector-tema button").forEach((boton) => {
+    boton.classList.toggle("activo", boton.dataset.tema === tema);
+  });
 }
 
 function mostrarToast(mensaje, esError = false) {
