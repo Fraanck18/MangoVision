@@ -35,9 +35,17 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-exportar").addEventListener("click", exportarEstadoComoJSON);
   document.getElementById("btn-fallo-sensor").addEventListener("click", manejarFalloSensor);
 
-  document.querySelectorAll("#selector-modo button").forEach((boton) => {
-    boton.addEventListener("click", () => cambiarModoVisualizacion(boton.dataset.modo));
+  document.querySelectorAll(".nav-link[data-vista]").forEach((boton) => {
+    boton.addEventListener("click", () => navegarVista(boton.dataset.vista));
   });
+  document.querySelectorAll("#selector-modo button").forEach((boton) => {
+    boton.addEventListener("click", () => window.cambiarModoVisualizacion?.(boton.dataset.modo));
+  });
+  document.querySelectorAll("#holo-clases button").forEach((boton) => {
+    boton.addEventListener("click", () => window.seleccionarClase3D?.(boton.dataset.clase));
+  });
+  document.getElementById("holo-escala-z").addEventListener("input", (e) => window.setEscalaZ3D?.(e.target.value));
+  document.getElementById("holo-autorot").addEventListener("change", (e) => window.setAutoRotar3D?.(e.target.checked));
 
   verificarConexionBackend();
   actualizarEstadoEntrenamiento();
@@ -53,8 +61,27 @@ function renderTodo() {
   renderClasificacionPorLote(estadoDashboard);
   renderParametrosAnalisis(estadoDashboard);
   renderZonasTemperatura(estadoDashboard);
-  renderMangos3D();
   renderGraficaDistribucion();
+}
+
+/**
+ * Navegacion entre vistas del sidebar. La "Vista 3D" inicializa el visor
+ * WebGL de forma perezosa (solo cuando se abre por primera vez) y reajusta su
+ * tamaño al mostrarse, porque un canvas en un contenedor display:none mide 0.
+ */
+function navegarVista(vista) {
+  const esVista3D = vista === "vista3d";
+  document.getElementById("vista-dashboard").classList.toggle("oculto", esVista3D);
+  document.getElementById("vista-3d").classList.toggle("oculto", !esVista3D);
+
+  document.querySelectorAll(".nav-link[data-vista]").forEach((b) => {
+    b.classList.toggle("activo", b.dataset.vista === vista);
+  });
+
+  if (esVista3D) {
+    window.renderMangos3D?.();               // init perezoso (idempotente)
+    requestAnimationFrame(() => window.ajustarVisor3D?.());  // reajusta tras el layout
+  }
 }
 
 function abrirSelectorImagen() {
@@ -102,11 +129,13 @@ async function analizarImagenImportada() {
   const tiempoSeg = (performance.now() - inicio) / 1000;
 
   aplicarDiagnosticoAlEstado(diagnostico, tiempoSeg);
-  actualizarClasificacionHolografica(diagnostico);
+  window.actualizarClasificacionHolografica?.(diagnostico);
   acumularMuestraGrafica(diagnostico.temperatura_estimada);
 
   const urlImagen = URL.createObjectURL(archivoSeleccionado);
   renderMuestraReciente(diagnostico, urlImagen);
+  // El holograma 3D usa la imagen REAL importada como mapa de calor (relieve Z).
+  window.cargarImagenHolograma?.(urlImagen);
   archivoSeleccionado = null;
 
   mostrarToast(`Imagen importada clasificada como "${diagnostico.categoria}" (${(diagnostico.confianza * 100).toFixed(1)}%).`);
@@ -125,7 +154,7 @@ async function analizarLotesPendientesHDFS() {
     aplicarDiagnosticoAlEstado(diagnostico, diagnostico.tiempo_inferencia_s);
     acumularMuestraGrafica(diagnostico.temperatura_estimada);
   });
-  actualizarClasificacionHolografica(resultado.resultados[resultado.resultados.length - 1]);
+  window.actualizarClasificacionHolografica?.(resultado.resultados[resultado.resultados.length - 1]);
   renderTodo();
 
   document.getElementById("meta-sesion").textContent =
@@ -198,6 +227,7 @@ async function actualizarEstadoEntrenamiento() {
   const pill = document.getElementById("estado-entrenamiento-pill");
   const barra = document.getElementById("entrenamiento-barra-relleno");
   const texto = document.getElementById("entrenamiento-texto");
+  const candidatos = document.getElementById("entrenamiento-candidatos");
 
   try {
     const estado = await consultarEstadoEntrenamiento();
@@ -207,6 +237,7 @@ async function actualizarEstadoEntrenamiento() {
     if (estado.estado === "sin_iniciar") {
       barra.style.width = "0%";
       texto.textContent = "Sin entrenamientos registrados todavía.";
+      candidatos.innerHTML = "";
       return;
     }
 
@@ -215,15 +246,51 @@ async function actualizarEstadoEntrenamiento() {
 
     if (estado.estado === "en_progreso") {
       const ultima = estado.historial[estado.historial.length - 1];
-      texto.textContent = `Época ${estado.epoca_actual}/${estado.epocas_totales} · pérdida_train: ${ultima ? ultima.perdida_train : "—"}`;
+      const progresoCandidato = estado.indice_candidato
+        ? `Entrenamiento ${estado.indice_candidato}/${estado.total_candidatos} (${estado.candidato_actual} épocas) · `
+        : "";
+      texto.textContent = `${progresoCandidato}Época ${estado.epoca_actual}/${estado.epocas_totales} · pérdida_train: ${ultima ? ultima.perdida_train : "—"}`;
+      barra.parentElement.classList.remove("oculto");
     } else if (estado.estado === "completado") {
-      texto.textContent = `Completado · accuracy_test: ${(estado.accuracy_test * 100).toFixed(1)}% sobre ${estado.epocas_totales} épocas`;
+      texto.textContent = `${estado.resultados_candidatos.length} entrenamientos independientes completados.`;
+      barra.parentElement.classList.add("oculto");
     }
+
+    renderCandidatosEntrenamiento(estado, candidatos);
   } catch {
     pill.className = "estado-pill error";
     pill.textContent = "sin conexión";
     texto.textContent = "No se pudo consultar /entrenamiento/estado.";
   }
+}
+
+/**
+ * Cada cantidad de epocas (5/10/15) corre como un entrenamiento INDEPENDIENTE
+ * (modelo nuevo, mismo punto de partida) y se muestra aqui como su propio
+ * resultado completo -- igual que el panel mostraba un unico entrenamiento de
+ * 12 epocas antes, ahora son 3 entrenamientos separados, lado a lado. Solo
+ * uno de los tres (el de mejor accuracy_test real) queda guardado como el
+ * modelo que sirve el backend; se marca con la insignia "EN PRODUCCIÓN".
+ */
+function renderCandidatosEntrenamiento(estado, contenedor) {
+  const resultados = estado.resultados_candidatos;
+  if (!resultados || resultados.length === 0) {
+    contenedor.innerHTML = "";
+    return;
+  }
+  const mejorEpocas = estado.mejor_epocas;
+  contenedor.innerHTML = resultados.map((r) => {
+    const enProduccion = r.epocas === mejorEpocas;
+    return `
+      <div class="resultado-entrenamiento ${enProduccion ? "en-produccion" : ""}">
+        <div class="resultado-cabecera">
+          <span class="resultado-titulo">Entrenamiento · ${r.epocas} épocas</span>
+          ${enProduccion ? '<span class="resultado-badge">★ EN PRODUCCIÓN</span>' : ""}
+        </div>
+        <span class="estado-pill completado">completado</span>
+        <div class="resultado-accuracy">accuracy_test: <strong>${(r.accuracy_test * 100).toFixed(1)}%</strong></div>
+      </div>`;
+  }).join("");
 }
 
 async function actualizarEstadoHDFS() {
@@ -285,19 +352,15 @@ function exportarEstadoComoJSON() {
  * que aqui solo falte sincronizar cual boton se ve "activo".
  */
 function inicializarSelectorTema() {
+  const select = document.getElementById("selector-tema");
   const temaActual = document.documentElement.dataset.tema || "claro";
-  document.querySelectorAll("#selector-tema button").forEach((boton) => {
-    boton.classList.toggle("activo", boton.dataset.tema === temaActual);
-    boton.addEventListener("click", () => cambiarTema(boton.dataset.tema));
-  });
+  select.value = temaActual;
+  select.addEventListener("change", () => cambiarTema(select.value));
 }
 
 function cambiarTema(tema) {
   document.documentElement.dataset.tema = tema;
   localStorage.setItem("thermomango_tema", tema);
-  document.querySelectorAll("#selector-tema button").forEach((boton) => {
-    boton.classList.toggle("activo", boton.dataset.tema === tema);
-  });
 }
 
 function mostrarToast(mensaje, esError = false) {

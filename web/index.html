@@ -4,10 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ThermoMango — Panel de Análisis Térmico</title>
-<link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/styles.css?v=5">
 <script>
   // Aplica el tema guardado ANTES de pintar, para evitar el parpadeo de tema claro -> oscuro/neon.
   document.documentElement.dataset.tema = localStorage.getItem("thermomango_tema") || "claro";
+</script>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
 </script>
 </head>
 <body>
@@ -25,10 +28,10 @@
 
     <nav class="nav-grupo">
       <div class="nav-titulo">ANÁLISIS</div>
-      <button class="nav-link activo"><span class="punto-nav"></span> Dashboard</button>
+      <button class="nav-link activo" data-vista="dashboard"><span class="punto-nav"></span> Dashboard</button>
       <button class="nav-link"><span class="punto-nav"></span> Mapa Térmico</button>
       <button class="nav-link"><span class="punto-nav"></span> Clasificador IA</button>
-      <button class="nav-link"><span class="punto-nav"></span> Vista 3D</button>
+      <button class="nav-link" data-vista="vista3d"><span class="punto-nav"></span> Vista 3D</button>
     </nav>
 
     <nav class="nav-grupo">
@@ -56,50 +59,40 @@
       </div>
       <div class="encabezado-acciones">
         <span id="pill-estado-backend" class="pill en-vivo"><span class="dot"></span> CONECTANDO</span>
-        <div class="segmentado" id="selector-tema" title="Modo de visualización">
-          <button data-tema="claro" class="activo">☀ Claro</button>
-          <button data-tema="oscuro">🌙 Oscuro</button>
-          <button data-tema="neon">⚡ Neón</button>
-        </div>
+        <label class="selector-modos-dropdown" title="Modo de visualización">
+          <span class="selector-modos-etiqueta">Modos</span>
+          <select id="selector-tema">
+            <option value="claro">☀ Claro</option>
+            <option value="oscuro">🌙 Oscuro</option>
+            <option value="neon">🔥 Neón Naranja</option>
+          </select>
+        </label>
         <input type="file" id="input-imagen" accept="image/*">
         <button id="btn-importar" class="boton">⬆ Importar Imagen</button>
         <button id="btn-analizar" class="boton boton-primario">▶ Analizar</button>
       </div>
     </div>
 
+    <div id="vista-dashboard">
+
     <section class="tarjetas-stats" id="tarjetas-stats" aria-label="Indicadores principales"></section>
 
-    <section class="panel">
-      <div class="panel-titulo">
-        <h2>🌡 Visualización 3D Holográfica — Tres Estados Térmicos</h2>
-        <div class="segmentado" id="selector-modo">
-          <button data-modo="ir">Espectro IR</button>
-          <button data-modo="holografico" class="activo">Holográfico</button>
-          <button data-modo="diferencial">Diferencial</button>
-        </div>
+    <section class="grilla-lote">
+      <div class="panel" style="margin:0;">
+        <div class="panel-titulo"><h2>📊 Clasificación por Lote</h2></div>
+        <div id="lista-clasificacion" class="lista-clasificacion"></div>
       </div>
 
-      <div class="grilla-principal">
-        <div id="holo-grilla" class="holo-grilla"></div>
+      <div class="panel" style="margin:0;">
+        <div class="panel-titulo"><h2>⚙ Parámetros del Análisis</h2></div>
+        <div id="grilla-parametros" class="grilla-parametros"></div>
+      </div>
 
-        <div class="panel-derecha" style="display:flex; flex-direction:column; gap:16px;">
-          <div class="panel" style="margin:0;">
-            <div class="panel-titulo"><h2>📊 Clasificación por Lote</h2></div>
-            <div id="lista-clasificacion" class="lista-clasificacion"></div>
-          </div>
-
-          <div class="panel" style="margin:0;">
-            <div class="panel-titulo"><h2>⚙ Parámetros del Análisis</h2></div>
-            <div id="grilla-parametros" class="grilla-parametros"></div>
-          </div>
-
-          <div class="panel" style="margin:0;">
-            <div class="panel-titulo"><h2>🟦 Zonas de Temperatura</h2></div>
-            <div class="barra-gradiente"></div>
-            <div class="barra-gradiente-ejes"><span>15°C</span><span>42°C</span></div>
-            <div id="grilla-zonas" class="grilla-zonas"></div>
-          </div>
-        </div>
+      <div class="panel" style="margin:0;">
+        <div class="panel-titulo"><h2>🟦 Zonas de Temperatura</h2></div>
+        <div class="barra-gradiente"></div>
+        <div class="barra-gradiente-ejes"><span>15°C</span><span>42°C</span></div>
+        <div id="grilla-zonas" class="grilla-zonas"></div>
       </div>
     </section>
 
@@ -139,7 +132,7 @@
 
     <section id="panel-entrenamiento" class="panel">
       <div class="panel-titulo">
-        <h2>🧠 Entrenamiento del Modelo (CNN ResNet-50 · por épocas)</h2>
+        <h2>🧠 Entrenamiento del Modelo (3 entrenamientos independientes: 5, 10 y 15 épocas)</h2>
         <button id="btn-entrenar" class="boton">▶ Iniciar entrenamiento</button>
       </div>
       <div class="entrenamiento-fila">
@@ -147,6 +140,7 @@
         <div class="entrenamiento-barra"><div id="entrenamiento-barra-relleno"></div></div>
         <span id="entrenamiento-texto" class="entrenamiento-info">Sin entrenamientos registrados todavía.</span>
       </div>
+      <div id="entrenamiento-candidatos" class="entrenamiento-candidatos"></div>
     </section>
 
     <section class="panel">
@@ -156,13 +150,62 @@
       </div>
     </section>
 
+    </div><!-- /vista-dashboard -->
+
+    <div id="vista-3d" class="oculto">
+      <section class="panel">
+        <div class="panel-titulo">
+          <h2>🧊 Visualización 3D Holográfica — Modelo Térmico Interactivo</h2>
+          <div class="segmentado" id="selector-modo">
+            <button data-modo="ir">Espectro IR</button>
+            <button data-modo="holografico" class="activo">Holográfico</button>
+            <button data-modo="diferencial">Diferencial</button>
+          </div>
+        </div>
+
+        <div class="grilla-vista3d">
+          <div class="holo-visor">
+            <div id="holo-canvas-3d" class="holo-canvas-3d">
+              <div class="holo-hud holo-hud-tl">MODELO HOLOGRÁFICO 3D · XYZ</div>
+              <div class="holo-hud holo-hud-tr"><span id="holo-hud-fps">— FPS</span></div>
+              <div class="holo-hud holo-hud-bl">RES: 80×80 · Z-DEPTH ACTIVO</div>
+            </div>
+            <div class="holo-controles-3d">
+              <div class="segmentado" id="holo-clases">
+                <button data-clase="calidad_promedio">🔵 Verde</button>
+                <button data-clase="alta_calidad" class="activo">🟢 Maduro</button>
+                <button data-clase="defectuoso">🔴 Sobre-Maduro</button>
+              </div>
+              <label class="holo-control-z">Escala Z
+                <input type="range" id="holo-escala-z" min="0.4" max="3" step="0.1" value="1.4">
+              </label>
+              <label class="holo-control-rot">
+                <input type="checkbox" id="holo-autorot" checked> Auto-rotar
+              </label>
+            </div>
+            <p class="holo-hint">Arrastra para rotar en XYZ · rueda para zoom · clic derecho para desplazar</p>
+          </div>
+
+          <div class="panel holo-info-estado" style="margin:0;">
+            <div class="panel-titulo"><h2>🔬 Estado térmico</h2></div>
+            <div id="holo-info-estado"></div>
+            <p class="holo-hint" style="margin-top:12px;">
+              El relieve (eje Y) representa la intensidad térmica: los <strong>picos</strong> son hot-spots de calor y
+              las <strong>zonas planas</strong> son áreas frías. Al analizar una imagen real, el holograma usa esa
+              imagen como mapa de calor.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div><!-- /vista-3d -->
+
   </main>
 </div>
 
 <div id="toast" class="toast oculto"></div>
 
 <script src="js/apiClient.js"></script>
-<script src="js/mango3dRenderer.js"></script>
+<script type="module" src="js/mango3dRenderer.js"></script>
 <script src="js/chartsRenderer.js"></script>
 <script src="js/uiRenderer.js"></script>
 <script src="js/main.js"></script>
