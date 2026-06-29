@@ -29,7 +29,7 @@
     <nav class="nav-grupo">
       <div class="nav-titulo">ANÁLISIS</div>
       <button class="nav-link activo" data-vista="dashboard"><span class="punto-nav"></span> Dashboard</button>
-      <button class="nav-link"><span class="punto-nav"></span> Mapa Térmico</button>
+      <button class="nav-link" data-vista="mapa-termico"><span class="punto-nav"></span> Mapa Térmico</button>
       <button class="nav-link"><span class="punto-nav"></span> Clasificador IA</button>
       <button class="nav-link" data-vista="vista3d"><span class="punto-nav"></span> Vista 3D</button>
     </nav>
@@ -41,13 +41,7 @@
       <button id="nav-configuracion" class="nav-link"><span class="punto-nav"></span> Configuración</button>
     </nav>
 
-    <div class="sidebar-usuario">
-      <div class="avatar">IR</div>
-      <div>
-        <div class="usuario-nombre">Ing. Ramírez</div>
-        <div class="usuario-rol">Analista Térmico</div>
-      </div>
-    </div>
+
   </aside>
 
   <main class="contenido">
@@ -152,6 +146,77 @@
 
     </div><!-- /vista-dashboard -->
 
+    <!-- ==================== MAPA TÉRMICO POR CAMIÓN Y LOTE ==================== -->
+    <div id="vista-mapa-termico" class="oculto">
+
+      <section class="panel">
+        <div class="panel-titulo">
+          <h2>🚚 Mapa Térmico por Camión y Lote</h2>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span id="mt-ultima-act" class="holo-hint">Última actualización: —</span>
+            <button id="btn-mt-actualizar" class="boton boton-primario">↻ Actualizar</button>
+          </div>
+        </div>
+        <p class="holo-hint" style="margin:0 0 14px;">Análisis térmico distribuido de la cadena de frío. Cada camión transporta múltiples lotes de mango monitoreados por sensores FLIR.</p>
+
+        <!-- Filtros -->
+        <div class="mt-filtros">
+          <div class="segmentado" id="mt-filtro-estado">
+            <button class="activo" data-filtro="todos">Todos</button>
+            <button data-filtro="verde">Verde</button>
+            <button data-filtro="maduro">Maduro</button>
+            <button data-filtro="sobremaduro">Sobre-maduro</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="mt-layout">
+        <!-- Columna izquierda: Flota + Resumen -->
+        <div class="mt-col-izq">
+          <div class="panel" style="margin:0;">
+            <div class="panel-titulo"><h2>🚛 Flota Activa</h2></div>
+            <div id="mt-lista-camiones" class="mt-lista-camiones"></div>
+          </div>
+          <div class="panel" style="margin:0;">
+            <div class="panel-titulo"><h2>📊 Resumen Global</h2></div>
+            <div id="mt-resumen-global" class="mt-resumen-global"></div>
+          </div>
+          <div class="panel" style="margin:0;">
+            <div class="panel-titulo"><h2>🌡 Escala Térmica</h2></div>
+            <div class="barra-gradiente"></div>
+            <div class="barra-gradiente-ejes"><span>15°C</span><span>28°C</span><span>43°C</span></div>
+            <div class="mt-escala-leyenda">
+              <div><span class="punto" style="background:#2f6fed"></span> Verde / Inmaduro · 15–24°C</div>
+              <div><span class="punto" style="background:#1f9d6b"></span> Maduro (óptimo) · 24–33°C</div>
+              <div><span class="punto" style="background:#dc2626"></span> Sobre-maduro · 33–43°C</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Columna central: Camiones con lotes -->
+        <div class="mt-col-centro">
+          <div id="mt-camiones-detalle"></div>
+        </div>
+
+        <!-- Columna derecha: Métricas + alertas -->
+        <div class="mt-col-der">
+          <div class="panel" style="margin:0;">
+            <div class="panel-titulo"><h2>📋 Métricas</h2></div>
+            <div id="mt-metricas"></div>
+          </div>
+          <div class="panel" style="margin:0;">
+            <div class="panel-titulo"><h2>⚠ Alertas Activas</h2></div>
+            <div id="mt-alertas"></div>
+          </div>
+          <div class="panel" style="margin:0;">
+            <div class="panel-titulo"><h2>📈 Distribución por Camión</h2></div>
+            <div id="mt-distribucion-camion"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /vista-mapa-termico -->
+
     <div id="vista-3d" class="oculto">
       <section class="panel">
         <div class="panel-titulo">
@@ -195,6 +260,30 @@
               imagen como mapa de calor.
             </p>
           </div>
+
+          <div class="panel" style="margin: 16px 0 0 0;">
+            <div class="panel-titulo"><h2>👁 Modos de Visualización</h2></div>
+            <div class="holo-explicacion-modos">
+              <div class="modo-desc-item" id="desc-modo-ir">
+                <strong style="color: var(--blue);">Espectro IR</strong>
+                <p style="font-size: 12.5px; margin: 4px 0 0; color: var(--text-muted); line-height: 1.4;">
+                  Muestra la firma térmica en una malla sólida utilizando la paleta científica <em>Ironbow</em>. Ideal para analizar gradientes y distribución de temperatura superficial.
+                </p>
+              </div>
+              <div class="modo-desc-item activo" id="desc-modo-holografico" style="margin-top: 8px;">
+                <strong style="color: var(--accent);">Holográfico</strong>
+                <p style="font-size: 12.5px; margin: 4px 0 0; color: var(--text-muted); line-height: 1.4;">
+                  Representa los datos mediante una nube de puntos 3D con un efecto de brillo neón aditivo. Facilita la visualización tridimensional rápida según la madurez detectada.
+                </p>
+              </div>
+              <div class="modo-desc-item" id="desc-modo-diferencial" style="margin-top: 8px;">
+                <strong style="color: var(--amber);">Diferencial</strong>
+                <p style="font-size: 12.5px; margin: 4px 0 0; color: var(--text-muted); line-height: 1.4;">
+                  Superpone una red de wireframe de color sobre una base topográfica oscura. Resalta los picos de anomalías y la desviación térmica respecto a la media del lote.
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </div><!-- /vista-3d -->
@@ -208,6 +297,7 @@
 <script type="module" src="js/mango3dRenderer.js"></script>
 <script src="js/chartsRenderer.js"></script>
 <script src="js/uiRenderer.js"></script>
+<script src="js/mapaTermicoRenderer.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

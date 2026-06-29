@@ -472,6 +472,175 @@ input[type="file"] { display: none; }
 .resultado-accuracy { font-size: 14px; }
 .resultado-accuracy strong { font-size: 17px; }
 
+/* ---------- Panel explicativo de modos de visualización ---------- */
+.holo-explicacion-modos {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.modo-desc-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: background-color 0.25s, border-color 0.25s, box-shadow 0.25s;
+}
+.modo-desc-item.activo {
+  background: var(--bg);
+  border-color: var(--border);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.modo-desc-item strong {
+  font-size: 13px;
+  font-weight: 700;
+  display: block;
+}
+
+/* ---------- Mapa Térmico: Layout 3 columnas ---------- */
+.mt-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr 260px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1200px) { .mt-layout { grid-template-columns: 1fr; } }
+
+.mt-col-izq, .mt-col-der { display: flex; flex-direction: column; gap: 16px; }
+.mt-col-centro { display: flex; flex-direction: column; gap: 16px; }
+
+.mt-filtros { margin-bottom: 0; }
+
+/* Lista de camiones (sidebar izq) */
+.mt-lista-camiones { display: flex; flex-direction: column; gap: 8px; }
+.mt-camion-item {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.mt-camion-item:hover { border-color: var(--accent); background: var(--bg); }
+.mt-camion-item-head { display: flex; justify-content: space-between; align-items: center; }
+.mt-camion-item-head strong { font-size: 13px; }
+.mt-camion-item-sub { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+.mt-estado-badge {
+  font-size: 10px; font-weight: 700;
+  padding: 2px 8px; border-radius: 999px;
+  border: 1px solid;
+}
+
+/* Resumen global */
+.mt-resumen-global { display: flex; flex-direction: column; gap: 6px; }
+.mt-resumen-fila {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12.5px; padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+.mt-resumen-fila:last-child { border-bottom: none; }
+.mt-resumen-barras { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.mt-resumen-barra-row {
+  display: grid; grid-template-columns: 60px 1fr 36px; gap: 8px; align-items: center;
+  font-size: 11.5px; font-weight: 600;
+}
+.mt-barra-bg { height: 6px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.mt-barra-fill { height: 100%; border-radius: 4px; transition: width .3s; }
+
+/* Escala térmica leyenda */
+.mt-escala-leyenda {
+  display: flex; flex-direction: column; gap: 5px;
+  font-size: 11.5px; color: var(--text-muted);
+}
+.mt-escala-leyenda > div { display: flex; align-items: center; gap: 6px; }
+
+/* Tarjetas de camión (columna central) */
+.mt-camion-card { margin: 0; }
+.mt-camion-card-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  flex-wrap: wrap; gap: 10px; margin-bottom: 12px;
+}
+.mt-camion-card-titulo { font-size: 14px; font-weight: 700; }
+.mt-camion-card-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+.mt-camion-card-stats {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12.5px; font-weight: 600;
+}
+
+/* Lotes dentro de un camión */
+.mt-lotes-container { display: flex; flex-direction: column; gap: 8px; }
+.mt-lote-fila {
+  display: grid;
+  grid-template-columns: 80px 1fr auto;
+  gap: 10px; align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.mt-lote-fila:last-child { border-bottom: none; }
+.mt-lote-id {
+  font-size: 12px; font-weight: 700; color: var(--text);
+  display: flex; align-items: center; gap: 4px;
+}
+.mt-alerta-lote { color: var(--amber); font-size: 13px; }
+
+/* Heatmap grid (celdas de temperatura por muestra) */
+.mt-heatmap-grid {
+  display: flex; flex-wrap: wrap; gap: 2px;
+}
+.mt-celda {
+  width: 36px; height: 26px;
+  border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9.5px; font-weight: 700; color: #fff;
+  cursor: default;
+  text-shadow: 0 1px 2px rgba(0,0,0,.4);
+  transition: transform .12s;
+}
+.mt-celda:hover { transform: scale(1.15); z-index: 2; }
+
+.mt-lote-resumen {
+  display: flex; flex-direction: column; gap: 2px;
+  font-size: 10.5px; font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Métricas derecha */
+.mt-metrica-fila {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12.5px; padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.mt-metrica-fila:last-child { border-bottom: none; }
+
+/* Alertas */
+.mt-alerta-card {
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.mt-alerta-card.critico { border-color: var(--red); background: var(--red-soft); }
+.mt-alerta-card.alerta { border-color: var(--amber); background: var(--amber-soft); }
+.mt-alerta-titulo { font-size: 11.5px; font-weight: 700; }
+.mt-alerta-msg { font-size: 11.5px; color: var(--text-muted); }
+
+/* Distribución por camión */
+.mt-dist-camion { margin-bottom: 12px; }
+.mt-dist-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12px; margin-bottom: 4px;
+}
+.mt-dist-head strong { font-size: 12.5px; }
+.mt-dist-head span { font-size: 11px; color: var(--text-muted); }
+.mt-dist-barra {
+  display: flex; height: 8px; border-radius: 4px; overflow: hidden;
+  background: var(--border);
+}
+.mt-dist-barra > div { height: 100%; transition: width .3s; }
+.mt-dist-leyenda {
+  display: flex; gap: 10px; margin-top: 4px;
+  font-size: 10.5px; font-weight: 600;
+}
+
 .oculto { display: none !important; }
 
 .toast {

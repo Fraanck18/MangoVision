@@ -78,21 +78,27 @@ function generarFirmaProcedural(perfil) {
       const nx = (i / (RES - 1)) * 2 - 1;
       const ny = (j / (RES - 1)) * 2 - 1;
       const r = Math.sqrt((nx * nx) / (0.82 * 0.82) + (ny * ny) / (0.74 * 0.74));
-      let h = 0.02 + Math.random() * 0.02;  // fondo frio
+      let h = 0.01 + Math.random() * 0.005;  // fondo frio limpio y casi plano (sin bailar)
       if (r <= 1) {
+        const base_shape = Math.sqrt(1 - r * r);
         if (perfil === "verde") {
-          h = 0.30 - 0.06 * r + (Math.random() - 0.5) * 0.04;          // frio y homogeneo
+          const noise = (Math.random() - 0.5) * 0.01;
+          h = (0.30 - 0.06 * r + noise) * base_shape;
         } else if (perfil === "maduro") {
-          h = 0.62 * (1 - r * r) + 0.22 + (Math.random() - 0.5) * 0.06; // gradiente radial
+          const noise = (Math.random() - 0.5) * 0.015;
+          h = (0.62 * (1 - r * r) + 0.22 + noise) * base_shape;
         } else {
-          h = 0.55 * (1 - r * r) + 0.30 + (Math.random() - 0.5) * 0.10; // base caliente
+          const noise = (Math.random() - 0.5) * 0.02;
+          let base_h = 0.55 * (1 - r * r) + 0.30 + noise;
           for (const hs of hotspots) {
             const d2 = ((nx - hs.x) ** 2 + (ny - hs.y) ** 2) / (2 * hs.s * hs.s);
-            h += 0.75 * Math.exp(-d2);                                   // picos (hot-spots)
+            base_h += 0.75 * Math.exp(-d2);                                   // picos (hot-spots)
           }
+          h = base_h * base_shape;
         }
       }
-      alturas[j * RES + i] = Math.max(0, Math.min(1, h));
+      // Quitamos el límite superior (clamp en 1) para que no se vea cortado arriba
+      alturas[j * RES + i] = Math.max(0, h);
     }
   }
   return alturas;
@@ -169,7 +175,7 @@ function construirObjeto() {
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     const colores = new Float32Array(RES * RES * 3);
     for (let p = 0; p < RES * RES; p++) {
-      const brillo = 0.45 + alturas[p] * 0.55;
+      const brillo = 0.45 + Math.min(1.0, alturas[p]) * 0.55;
       colores[p * 3] = colorClase.r * brillo;
       colores[p * 3 + 1] = colorClase.g * brillo;
       colores[p * 3 + 2] = colorClase.b * brillo;
@@ -245,10 +251,10 @@ function iniciarEscena() {
   const alto = cont.clientHeight || 380;
 
   estado3d.escena = new THREE.Scene();
-  estado3d.escena.fog = new THREE.FogExp2(0x05080f, 0.035);
+  estado3d.escena.fog = new THREE.FogExp2(0x05080f, 0.018);
 
   estado3d.camara = new THREE.PerspectiveCamera(45, ancho / alto, 0.1, 100);
-  estado3d.camara.position.set(9, 8, 11);
+  estado3d.camara.position.set(7, 10, 14);
 
   estado3d.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   estado3d.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -299,10 +305,8 @@ function bucle() {
   if (estado3d.autoRotar && estado3d.objeto) {
     estado3d.objeto.rotation.y += dt * 0.25;
   }
-  // Jitter de "interferencia termica" en sobre-maduro (estado critico).
-  if (estado3d.claseActiva === "defectuoso" && estado3d.objeto) {
-    estado3d.objeto.position.y = Math.sin(performance.now() * 0.018) * 0.05;
-  } else if (estado3d.objeto) {
+  // Jitter de "interferencia termica" desactivado para evitar que el modelo baile/salte
+  if (estado3d.objeto) {
     estado3d.objeto.position.y = 0;
   }
 
@@ -334,6 +338,10 @@ function cambiarModoVisualizacion(modo) {
   estado3d.modo = modo;
   document.querySelectorAll("#selector-modo button").forEach((b) => {
     b.classList.toggle("activo", b.dataset.modo === modo);
+  });
+  // Sincronizar el panel explicativo de modos de visualización
+  document.querySelectorAll(".modo-desc-item").forEach((item) => {
+    item.classList.toggle("activo", item.id === `desc-modo-${modo}`);
   });
   reconstruirObjeto();
 }

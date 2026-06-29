@@ -47,6 +47,16 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("holo-escala-z").addEventListener("input", (e) => window.setEscalaZ3D?.(e.target.value));
   document.getElementById("holo-autorot").addEventListener("change", (e) => window.setAutoRotar3D?.(e.target.checked));
 
+  // Mapa Termico: boton actualizar y filtros
+  document.getElementById("btn-mt-actualizar").addEventListener("click", () => renderMapaTermico());
+  document.querySelectorAll("#mt-filtro-estado button").forEach((b) => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll("#mt-filtro-estado button").forEach((x) => x.classList.remove("activo"));
+      b.classList.add("activo");
+      renderMapaTermico(b.dataset.filtro);
+    });
+  });
+
   verificarConexionBackend();
   actualizarEstadoEntrenamiento();
   actualizarEstadoHDFS();
@@ -65,22 +75,34 @@ function renderTodo() {
 }
 
 /**
- * Navegacion entre vistas del sidebar. La "Vista 3D" inicializa el visor
- * WebGL de forma perezosa (solo cuando se abre por primera vez) y reajusta su
- * tamaño al mostrarse, porque un canvas en un contenedor display:none mide 0.
+ * Navegacion entre vistas del sidebar. Las tres vistas principales son:
+ * "dashboard", "mapa-termico" y "vista3d". Cada vista tiene su propio div
+ * con id correspondiente. La Vista 3D se inicializa de forma perezosa.
  */
 function navegarVista(vista) {
-  const esVista3D = vista === "vista3d";
-  document.getElementById("vista-dashboard").classList.toggle("oculto", esVista3D);
-  document.getElementById("vista-3d").classList.toggle("oculto", !esVista3D);
+  const vistas = ["vista-dashboard", "vista-mapa-termico", "vista-3d"];
+  const mapaVista = {
+    "dashboard": "vista-dashboard",
+    "mapa-termico": "vista-mapa-termico",
+    "vista3d": "vista-3d",
+  };
+  const idActiva = mapaVista[vista] || "vista-dashboard";
+
+  vistas.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle("oculto", id !== idActiva);
+  });
 
   document.querySelectorAll(".nav-link[data-vista]").forEach((b) => {
     b.classList.toggle("activo", b.dataset.vista === vista);
   });
 
-  if (esVista3D) {
-    window.renderMangos3D?.();               // init perezoso (idempotente)
-    requestAnimationFrame(() => window.ajustarVisor3D?.());  // reajusta tras el layout
+  if (vista === "vista3d") {
+    window.renderMangos3D?.();
+    requestAnimationFrame(() => window.ajustarVisor3D?.());
+  }
+  if (vista === "mapa-termico") {
+    renderMapaTermico();
   }
 }
 
