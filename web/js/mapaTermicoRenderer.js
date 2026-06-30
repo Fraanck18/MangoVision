@@ -116,7 +116,16 @@ function renderMapaTermico(filtro) {
 
   renderListaCamiones(flota);
   renderResumenGlobal(flota);
-  renderCamionesDetalle(flota, filtro);
+
+  // FLIP: al cambiar el filtro las tarjetas de camion se reordenan/aparecen
+  // con una transicion fluida en vez de "saltar" por el innerHTML abrupto.
+  const contCentro = document.getElementById("mt-camiones-detalle");
+  if (contCentro) {
+    flipRender(contCentro, () => renderCamionesDetalle(flota, filtro));
+  } else {
+    renderCamionesDetalle(flota, filtro);
+  }
+
   renderMetricas(flota);
   renderAlertas(flota);
   renderDistribucionCamion(flota);
@@ -137,15 +146,69 @@ function renderListaCamiones(flota) {
   if (!cont) return;
   cont.innerHTML = flota.map((c) => {
     const colorEstado = c.estado === "Crítico" ? "var(--red)" : c.estado === "Alerta" ? "var(--amber)" : "var(--accent)";
+    const claseCritico = c.estado === "Crítico" ? "critico" : "";
     return `
-      <div class="mt-camion-item">
+      <div class="mt-camion-item" data-camion-id="${c.id}" role="button" tabindex="0">
         <div class="mt-camion-item-head">
           <strong>${c.id}</strong>
-          <span class="mt-estado-badge" style="color:${colorEstado};border-color:${colorEstado};">${c.estado}</span>
+          <span class="mt-estado-badge ${claseCritico}" style="color:${colorEstado};border-color:${colorEstado};">${c.estado}</span>
         </div>
         <div class="mt-camion-item-sub">${c.numLotes} lotes · ${c.totalMuestras} muestras</div>
       </div>`;
   }).join("");
+
+  cont.querySelectorAll(".mt-camion-item").forEach((el) => {
+    const abrir = () => abrirDetalleCamion(el.dataset.camionId);
+    el.addEventListener("click", abrir);
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrir(); } });
+  });
+}
+
+/**
+ * Drawer lateral con el detalle completo del camion: evita navegar a otra
+ * pagina para ver lotes, alertas y muestras -- el usuario mantiene el
+ * contexto del mapa termico mientras revisa el detalle.
+ */
+function abrirDetalleCamion(camionId) {
+  const camion = (datosFlota || []).find((c) => c.id === camionId);
+  if (!camion) return;
+
+  const colorEstado = camion.estado === "Crítico" ? "var(--red)" : camion.estado === "Alerta" ? "var(--amber)" : "var(--accent)";
+
+  const lotesHtml = camion.lotes.map((l) => {
+    const tieneAlerta = l.alertas.length > 0;
+    return `
+      <div class="mt-lote-fila" style="grid-template-columns: 1fr auto;">
+        <div class="mt-lote-id">${l.nombre} ${tieneAlerta ? '<span class="mt-alerta-lote">⚠</span>' : ""}</div>
+        <div class="mt-lote-resumen">
+          <span>${l.numMuestras} muestras</span>
+          <span>${l.tempProm}°C prom. (${l.tempMin}–${l.tempMax}°C)</span>
+        </div>
+      </div>`;
+  }).join("");
+
+  const alertasHtml = camion.alertas.length > 0
+    ? camion.alertas.map((a) => `
+        <div class="mt-alerta-card ${a.tipo === "Crítico" ? "critico" : "alerta"}">
+          <div class="mt-alerta-titulo">${a.lote}</div>
+          <div class="mt-alerta-msg">${a.msg}</div>
+        </div>`).join("")
+    : `<p class="holo-hint">Sin alertas para este camión.</p>`;
+
+  const html = `
+    <div class="mt-camion-card-stats" style="margin-bottom:14px;">
+      <span class="mt-estado-badge ${camion.estado === "Crítico" ? "critico" : ""}" style="color:${colorEstado};border-color:${colorEstado};">${camion.estado}</span>
+      <span>${camion.tempProm}°C prom.</span>
+      <span>${camion.tempMax}°C máx.</span>
+    </div>
+    <p class="holo-hint">Ruta: ${camion.ruta} · Origen: ${camion.origen}</p>
+    <h4 style="font-size:12.5px;margin:16px 0 8px;">Lotes (${camion.numLotes})</h4>
+    <div class="mt-lotes-container">${lotesHtml}</div>
+    <h4 style="font-size:12.5px;margin:16px 0 8px;">Alertas</h4>
+    ${alertasHtml}
+  `;
+
+  abrirDrawer(`${camion.nombre} — ${camion.id}`, html);
 }
 
 function renderResumenGlobal(flota) {
@@ -199,7 +262,8 @@ function renderCamionesDetalle(flota, filtro) {
   cont.innerHTML = flota.map((camion) => {
     const colorEstado = camion.estado === "Crítico" ? "var(--red)" : camion.estado === "Alerta" ? "var(--amber)" : "var(--accent)";
     const numAlertas = camion.alertas.length;
-    const alertaHtml = numAlertas > 0 ? `<span class="mt-estado-badge" style="color:${colorEstado};border-color:${colorEstado}">${numAlertas} alerta${numAlertas > 1 ? "s" : ""}</span>` : `<span class="mt-estado-badge" style="color:var(--accent);border-color:var(--accent)">Óptimo</span>`;
+    const claseCriticoCamion = camion.estado === "Crítico" ? "critico" : "";
+    const alertaHtml = numAlertas > 0 ? `<span class="mt-estado-badge ${claseCriticoCamion}" style="color:${colorEstado};border-color:${colorEstado}">${numAlertas} alerta${numAlertas > 1 ? "s" : ""}</span>` : `<span class="mt-estado-badge" style="color:var(--accent);border-color:var(--accent)">Óptimo</span>`;
 
     const lotesHtml = camion.lotes.map((lote) => {
       // Filtrar por estado si aplica
@@ -221,7 +285,7 @@ function renderCamionesDetalle(flota, filtro) {
       const loteAlertaHtml = lote.alertas.length > 0 ? `<span class="mt-alerta-lote">⚠</span>` : "";
 
       return `
-        <div class="mt-lote-fila">
+        <div class="mt-lote-fila" data-camion-id="${camion.id}" data-lote-id="${lote.id}" role="button" tabindex="0" style="cursor:pointer;">
           <div class="mt-lote-id">${lote.nombre} ${loteAlertaHtml}</div>
           <div class="mt-heatmap-grid">${celdasHtml}</div>
           <div class="mt-lote-resumen">
@@ -235,7 +299,7 @@ function renderCamionesDetalle(flota, filtro) {
     if (!lotesHtml.trim()) return "";
 
     return `
-      <div class="panel mt-camion-card">
+      <div class="panel mt-camion-card" data-flip-key="${camion.id}">
         <div class="mt-camion-card-head">
           <div>
             <div class="mt-camion-card-titulo">${camion.nombre} — ${camion.ruta}</div>
@@ -250,6 +314,37 @@ function renderCamionesDetalle(flota, filtro) {
         <div class="mt-lotes-container">${lotesHtml}</div>
       </div>`;
   }).join("");
+
+  cont.querySelectorAll(".mt-lote-fila").forEach((el) => {
+    const abrir = () => abrirDetalleLote(el.dataset.camionId, el.dataset.loteId);
+    el.addEventListener("click", abrir);
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrir(); } });
+  });
+}
+
+function abrirDetalleLote(camionId, loteId) {
+  const camion = (datosFlota || []).find((c) => c.id === camionId);
+  const lote = camion?.lotes.find((l) => l.id === loteId);
+  if (!lote) return;
+
+  const muestrasHtml = lote.muestras.map((m, i) => `
+    <div class="mt-metrica-fila">
+      <span>Muestra ${i + 1} · ${m.etiqueta}</span>
+      <strong style="color:${colorCelda(m.temp)}">${m.temp}°C · ${m.confianza}%</strong>
+    </div>`).join("");
+
+  const html = `
+    <p class="holo-hint">${camion.nombre} (${camion.id}) · ${lote.numMuestras} muestras · prom. ${lote.tempProm}°C</p>
+    <div class="grilla-zonas" style="grid-template-columns:repeat(3,1fr); margin-bottom:14px;">
+      <div class="zona-card"><div class="zona-nombre">MÍNIMA</div><div class="zona-temp">${lote.tempMin}°C</div></div>
+      <div class="zona-card"><div class="zona-nombre">PROMEDIO</div><div class="zona-temp">${lote.tempProm}°C</div></div>
+      <div class="zona-card"><div class="zona-nombre">MÁXIMA</div><div class="zona-temp">${lote.tempMax}°C</div></div>
+    </div>
+    <h4 style="font-size:12.5px;margin:0 0 8px;">Muestras (${lote.numMuestras})</h4>
+    <div class="lista-virtual" style="max-height:320px;">${muestrasHtml}</div>
+  `;
+
+  abrirDrawer(`${lote.nombre} — Detalle`, html);
 }
 
 
@@ -292,7 +387,7 @@ function renderAlertas(flota) {
       <div class="mt-alerta-card ${esCritico ? "critico" : "alerta"}">
         <div class="mt-alerta-titulo">${a.camion} · ${a.lote}</div>
         <div class="mt-alerta-msg">${a.msg}</div>
-        <span class="mt-estado-badge" style="color:${esCritico ? "var(--red)" : "var(--amber)"};border-color:${esCritico ? "var(--red)" : "var(--amber)"}">${a.tipo}</span>
+        <span class="mt-estado-badge ${esCritico ? "critico" : ""}" style="color:${esCritico ? "var(--red)" : "var(--amber)"};border-color:${esCritico ? "var(--red)" : "var(--amber)"}">${a.tipo}</span>
       </div>`;
   }).join("");
 }

@@ -26,6 +26,8 @@ let cicloPollingMetrica = null;
 document.addEventListener("DOMContentLoaded", () => {
   renderTodo();
   inicializarSelectorTema();
+  inicializarDrawer();
+  inicializarDensidad();
 
   document.getElementById("btn-importar").addEventListener("click", () => abrirSelectorImagen());
   document.getElementById("btn-agregar-muestra").addEventListener("click", () => abrirSelectorImagen());
@@ -235,16 +237,30 @@ async function verificarConexionBackend() {
   }
 }
 
+/**
+ * Optimistic UI: el pill de estado se actualiza a "iniciando" al instante
+ * (0 ms percibidos), sin esperar la respuesta del backend. Si la llamada
+ * falla, se hace rollback al estado previo y se avisa con un toast --
+ * el usuario nunca queda viendo un estado que en realidad no ocurrio.
+ */
 async function manejarClickEntrenar() {
   const boton = document.getElementById("btn-entrenar");
+  const pill = document.getElementById("estado-entrenamiento-pill");
+  const estadoPrevio = { texto: pill.textContent, clase: pill.className };
+
   boton.disabled = true;
+  pill.className = "estado-pill iniciando optimista";
+  pill.textContent = "iniciando…";
+
   try {
     await iniciarEntrenamiento();
     mostrarToast("Entrenamiento por épocas iniciado en el backend.");
+    actualizarEstadoEntrenamiento();
   } catch (error) {
-    mostrarToast(`No se pudo iniciar el entrenamiento: ${error.message}`, true);
-  } finally {
+    pill.className = estadoPrevio.clase;
+    pill.textContent = estadoPrevio.texto;
     boton.disabled = false;
+    mostrarToast(`No se pudo iniciar el entrenamiento: ${error.message}`, true);
   }
 }
 
@@ -309,12 +325,21 @@ async function actualizarEstadoEntrenamiento() {
 
 async function manejarClickDetenerEntrenamiento() {
   const boton = document.getElementById("btn-detener-entrenamiento");
+  const pill = document.getElementById("estado-entrenamiento-pill");
+  const estadoPrevio = { texto: pill.textContent, clase: pill.className };
+
   boton.disabled = true;
+  pill.className = "estado-pill detenido optimista";
+  pill.textContent = "deteniendo…";
+
   try {
     await detenerEntrenamiento();
     mostrarToast("Entrenamiento detenido. Esa corrida quedó registrada en el historial.", true);
     actualizarEstadoEntrenamiento();
   } catch (error) {
+    pill.className = estadoPrevio.clase;
+    pill.textContent = estadoPrevio.texto;
+    boton.disabled = false;
     mostrarToast(`No se pudo detener el entrenamiento: ${error.message}`, true);
   }
 }
@@ -340,18 +365,22 @@ async function alternarHistorialEntrenamiento() {
       contenedor.innerHTML = `<span class="entrenamiento-info">Todavía no hay corridas completadas en el historial.</span>`;
       return;
     }
-    contenedor.innerHTML = corridas.slice().reverse().map((corrida) => {
+    // Lista virtualizada: solo se montan en el DOM las filas visibles.
+    // Con pocas corridas no se nota, pero escala sin costo si el historial
+    // crece a cientos/miles de entrenamientos.
+    crearListaVirtual(contenedor, corridas.slice().reverse(), 40, (corrida) => {
       const fecha = corrida.fin ? new Date(corrida.fin * 1000).toLocaleString() : "—";
       const detalle = corrida.estado === "detenido"
         ? "detenida manualmente"
         : `mejor: ${corrida.mejor_epocas} épocas · accuracy_test: ${(corrida.accuracy_test * 100).toFixed(1)}%`;
-      return `
-        <div class="entrenamiento-historial-item">
-          <span>${fecha}</span>
-          <span class="estado-pill ${corrida.estado}">${corrida.estado}</span>
-          <span>${detalle}</span>
-        </div>`;
-    }).join("");
+      const fila = document.createElement("div");
+      fila.className = "entrenamiento-historial-item";
+      fila.innerHTML = `
+        <span>${fecha}</span>
+        <span class="estado-pill ${corrida.estado}">${corrida.estado}</span>
+        <span>${detalle}</span>`;
+      return fila;
+    });
   } catch (error) {
     contenedor.innerHTML = `<span class="entrenamiento-info">No se pudo cargar el historial: ${error.message}</span>`;
   }
@@ -444,17 +473,63 @@ function exportarEstadoComoJSON() {
  * fuente de verdad real -- localStorage queda solo como cache para que el
  * script inline no tenga que esperar una llamada de red en cada carga.
  */
+const ETIQUETAS_TEMA = {
+  claro: { icono: "☀", texto: "Claro" },
+  oscuro: { icono: "🌙", texto: "Oscuro" },
+  neon: { icono: "🔥", texto: "Neón Naranja" },
+};
+
 function inicializarSelectorTema() {
-  const select = document.getElementById("selector-tema");
+  const contenedor = document.getElementById("selector-modos-dropdown");
+  const boton = document.getElementById("selector-modos-boton");
+  const lista = document.getElementById("selector-modos-lista");
+  const opciones = Array.from(lista.querySelectorAll(".selector-modos-opcion"));
+
+  const sincronizarVisual = (tema) => {
+    const datos = ETIQUETAS_TEMA[tema] || ETIQUETAS_TEMA.claro;
+    document.getElementById("selector-modos-icono").textContent = datos.icono;
+    document.getElementById("selector-modos-valor").textContent = datos.texto;
+    opciones.forEach((op) => op.classList.toggle("activo", op.dataset.valor === tema));
+  };
+
+  const cerrarLista = () => {
+    lista.classList.add("oculto");
+    boton.setAttribute("aria-expanded", "false");
+  };
+
+  const abrirLista = () => {
+    lista.classList.remove("oculto");
+    boton.setAttribute("aria-expanded", "true");
+  };
+
+  boton.addEventListener("click", () => {
+    lista.classList.contains("oculto") ? abrirLista() : cerrarLista();
+  });
+
+  opciones.forEach((opcion) => {
+    opcion.addEventListener("click", () => {
+      const tema = opcion.dataset.valor;
+      sincronizarVisual(tema);
+      cambiarTema(tema);
+      cerrarLista();
+    });
+  });
+
+  document.addEventListener("click", (ev) => {
+    if (!contenedor.contains(ev.target)) cerrarLista();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") cerrarLista();
+  });
+
   const temaActual = document.documentElement.dataset.tema || "claro";
-  select.value = temaActual;
-  select.addEventListener("change", () => cambiarTema(select.value));
+  sincronizarVisual(temaActual);
 
   obtenerPreferencias()
     .then((preferencias) => {
-      if (preferencias.tema && preferencias.tema !== select.value) {
-        select.value = preferencias.tema;
+      if (preferencias.tema && preferencias.tema !== temaActual) {
         aplicarTema(preferencias.tema);
+        sincronizarVisual(preferencias.tema);
       }
     })
     .catch(() => { /* backend sin conexion: se queda con lo que ya aplico localStorage */ });

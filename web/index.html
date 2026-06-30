@@ -7,7 +7,10 @@
 <link rel="stylesheet" href="css/styles.css?v=5">
 <script>
   // Aplica el tema guardado ANTES de pintar, para evitar el parpadeo de tema claro -> oscuro/neon.
-  document.documentElement.dataset.tema = localStorage.getItem("thermomango_tema") || "claro";
+  // Si el usuario nunca elegio un tema, se respeta la preferencia del sistema operativo.
+  const temaPreferidoSistema = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "oscuro" : "claro";
+  document.documentElement.dataset.tema = localStorage.getItem("thermomango_tema") || temaPreferidoSistema;
 </script>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js" } }
@@ -53,14 +56,32 @@
       </div>
       <div class="encabezado-acciones">
         <span id="pill-estado-backend" class="pill en-vivo"><span class="dot"></span> CONECTANDO</span>
-        <label class="selector-modos-dropdown" title="Modo de visualización">
+        <div class="selector-modos-dropdown" id="selector-modos-dropdown" title="Modo de visualización">
           <span class="selector-modos-etiqueta">Modos</span>
-          <select id="selector-tema">
-            <option value="claro">☀ Claro</option>
-            <option value="oscuro">🌙 Oscuro</option>
-            <option value="neon">🔥 Neón Naranja</option>
-          </select>
-        </label>
+          <button type="button" class="selector-modos-boton" id="selector-modos-boton" aria-haspopup="listbox" aria-expanded="false">
+            <span class="selector-modos-icono" id="selector-modos-icono">☀</span>
+            <span class="selector-modos-valor" id="selector-modos-valor">Claro</span>
+            <span class="selector-modos-chevron"></span>
+          </button>
+          <ul class="selector-modos-lista oculto" id="selector-modos-lista" role="listbox" tabindex="-1">
+            <li role="option" data-valor="claro" class="selector-modos-opcion" data-icono="☀">
+              <span class="selector-modos-opcion-icono">☀</span>
+              <span class="selector-modos-opcion-texto">Claro</span>
+              <span class="selector-modos-opcion-check">✓</span>
+            </li>
+            <li role="option" data-valor="oscuro" class="selector-modos-opcion" data-icono="🌙">
+              <span class="selector-modos-opcion-icono">🌙</span>
+              <span class="selector-modos-opcion-texto">Oscuro</span>
+              <span class="selector-modos-opcion-check">✓</span>
+            </li>
+            <li role="option" data-valor="neon" class="selector-modos-opcion" data-icono="🔥">
+              <span class="selector-modos-opcion-icono">🔥</span>
+              <span class="selector-modos-opcion-texto">Neón Naranja</span>
+              <span class="selector-modos-opcion-check">✓</span>
+            </li>
+          </ul>
+        </div>
+        <button type="button" class="boton" id="btn-densidad" title="Alternar densidad de información">▤ Vista compacta</button>
         <input type="file" id="input-imagen" accept="image/*">
         <button id="btn-importar" class="boton">⬆ Importar Imagen</button>
         <button id="btn-analizar" class="boton boton-primario">▶ Analizar</button>
@@ -299,11 +320,21 @@
 
 <div id="toast" class="toast oculto"></div>
 
-<script src="js/apiClient.js"></script>
-<script type="module" src="js/mango3dRenderer.js"></script>
-<script src="js/chartsRenderer.js"></script>
-<script src="js/uiRenderer.js"></script>
-<script src="js/mapaTermicoRenderer.js"></script>
-<script src="js/main.js"></script>
+<div id="drawer-overlay" class="drawer-overlay oculto"></div>
+<aside id="drawer" class="drawer oculto" role="dialog" aria-modal="true" aria-labelledby="drawer-titulo">
+  <div class="drawer-header">
+    <h3 id="drawer-titulo">Detalle</h3>
+    <button type="button" id="drawer-cerrar" class="boton" aria-label="Cerrar panel">✕</button>
+  </div>
+  <div id="drawer-contenido" class="drawer-contenido"></div>
+</aside>
+
+<script src="js/apiClient.js?v=2"></script>
+<script src="js/uxHelpers.js?v=1"></script>
+<script type="module" src="js/mango3dRenderer.js?v=2"></script>
+<script src="js/chartsRenderer.js?v=2"></script>
+<script src="js/uiRenderer.js?v=2"></script>
+<script src="js/mapaTermicoRenderer.js?v=2"></script>
+<script src="js/main.js?v=3"></script>
 </body>
 </html>
