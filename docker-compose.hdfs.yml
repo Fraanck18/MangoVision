@@ -1,0 +1,91 @@
+# Cluster de datos completo: HDFS real (NameNode + DataNode) + Spark real
+# (Master + Worker), todo en un solo docker-compose para que comparten la
+# misma red Docker (resolucion por nombre de servicio: "namenode",
+# "spark-master", etc.) sin configuracion adicional. Sustituye tanto al
+# "hdfs_simulado" en disco como a `spark_inference.py` "diseñado pero nunca
+# probado contra un cluster real".
+#
+# Uso:
+#   docker compose -f docker-compose.hdfs.yml up -d --build
+#   docker compose -f docker-compose.hdfs.yml exec namenode hdfs dfs -mkdir -p /data-lake/mangos/raw
+#   docker compose -f docker-compose.hdfs.yml exec spark-master \
+#     /opt/spark/bin/spark-submit --master spark://spark-master:7077 \
+#     /opt/mangovision/src/pipeline/spark_inference.py
+#
+# Puertos publicados en localhost:
+#   9000  -> NameNode RPC (hdfs://localhost:9000)      usado por pyarrow/Spark
+#   9870  -> NameNode WebUI + WebHDFS REST              usado por el cliente python "hdfs"
+#   9864  -> DataNode WebUI
+#   9866  -> DataNode data transfer
+#   7077  -> Spark Master RPC (spark://localhost:7077)
+#   8080  -> Spark Master WebUI (estado del cluster, jobs)
+#   8081  -> Spark Worker WebUI
+services:
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: mangovision-hdfs-namenode
+    hostname: namenode
+    restart: unless-stopped
+    environment:
+      - CLUSTER_NAME=mangovision-datalake
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - HDFS_CONF_dfs_replication=1
+      - HDFS_CONF_dfs_webhdfs_enabled=true
+      # WebHDFS redirige al DataNode usando su hostname interno; se publica
+      # con el mismo nombre para que el redirect sea resoluble desde el host.
+      - HDFS_CONF_dfs_client_use_datanode_hostname=true
+    ports:
+      - "9000:9000"
+      - "9870:9870"
+    volumes:
+      - hdfs_namenode_data:/hadoop/dfs/name
+
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: mangovision-hdfs-datanode
+    hostname: datanode
+    restart: unless-stopped
+    depends_on:
+      - namenode
+    environment:
+      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - SERVICE_PRECONDITION=namenode:9870
+      - HDFS_CONF_dfs_webhdfs_enabled=true
+      - HDFS_CONF_dfs_client_use_datanode_hostname=true
+    ports:
+      - "9864:9864"
+      - "9866:9866"
+    volumes:
+      - hdfs_datanode_data:/hadoop/dfs/data
+
+  spark-master:
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
+    image: mangovision-spark:3.5.1
+    container_name: mangovision-spark-master
+    hostname: spark-master
+    restart: unless-stopped
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    ports:
+      - "7077:7077"
+      - "8080:8080"
+
+  spark-worker:
+    image: mangovision-spark:3.5.1
+    container_name: mangovision-spark-worker
+    hostname: spark-worker
+    restart: unless-stopped
+    depends_on:
+      - spark-master
+      - namenode
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    environment:
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
+    ports:
+      - "8081:8081"
+
+volumes:
+  hdfs_namenode_data:
+  hdfs_datanode_data:

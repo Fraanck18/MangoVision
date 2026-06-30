@@ -38,6 +38,41 @@ async function consultarEstadoEntrenamiento() {
   return respuesta.json();
 }
 
+async function detenerEntrenamiento() {
+  const respuesta = await fetch(`${API_BASE}/entrenamiento/detener`, { method: "POST" });
+  if (!respuesta.ok) {
+    const detalle = await respuesta.json().catch(() => ({}));
+    throw new Error(detalle.detail || `/entrenamiento/detener respondio HTTP ${respuesta.status}`);
+  }
+  return respuesta.json();
+}
+
+async function consultarHistorialEntrenamiento() {
+  const respuesta = await fetch(`${API_BASE}/entrenamiento/historial`);
+  if (!respuesta.ok) throw new Error(`/entrenamiento/historial respondio HTTP ${respuesta.status}`);
+  return respuesta.json();
+}
+
+function urlReporteCSV() {
+  return `${API_BASE}/entrenamiento/reporte.csv`;
+}
+
+async function obtenerPreferencias() {
+  const respuesta = await fetch(`${API_BASE}/config/preferencias`);
+  if (!respuesta.ok) throw new Error(`/config/preferencias respondio HTTP ${respuesta.status}`);
+  return respuesta.json();
+}
+
+async function guardarPreferencias(preferencias) {
+  const respuesta = await fetch(`${API_BASE}/config/preferencias`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(preferencias),
+  });
+  if (!respuesta.ok) throw new Error(`/config/preferencias (POST) respondio HTTP ${respuesta.status}`);
+  return respuesta.json();
+}
+
 async function consultarEstadoHDFS() {
   const respuesta = await fetch(`${API_BASE}/hdfs/estado`);
   if (!respuesta.ok) throw new Error(`/hdfs/estado respondio HTTP ${respuesta.status}`);

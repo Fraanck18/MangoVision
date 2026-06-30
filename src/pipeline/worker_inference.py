@@ -1,6 +1,6 @@
 """
-Inferencia en paralelo sobre los lotes pendientes en el Data Lake (HDFS
-simulado en disco, ver src/ingestion/scheduler.py).
+Inferencia en paralelo sobre los lotes pendientes en el Data Lake (HDFS real,
+ver docker-compose.hdfs.yml y src/ingestion/scheduler.py).
 
 Paralelismo de datos, no de modelo: todos los workers comparten la MISMA
 instancia ya cargada del modelo entrenado (PyTorch libera el GIL durante las
@@ -10,8 +10,9 @@ imagenes. No hay promedio de gradientes ni aproximacion: cada imagen pasa por
 exactamente el mismo softmax que en `/diagnostico`, solo que repartidas entre
 N workers para reducir el tiempo de pared total. Esto es deliberadamente el
 mismo enfoque que `src/pipeline/spark_inference.py` (data parallelism via
-mapInPandas), pero ejecutable sin un cluster Spark/HDFS real.
+mapInPandas), pero via hilos y lectura WebHDFS en vez de un cluster Spark.
 """
+import io
 import json
 import logging
 import time
@@ -20,8 +21,9 @@ from pathlib import Path
 
 from PIL import Image
 
-from src.config import HDFS_RAW_PATH_LOCAL, LOTES_PROCESADOS_PATH, NUM_WORKERS_INFERENCIA
+from src.config import HDFS_RAW_PATH_WEBHDFS, LOTES_PROCESADOS_PATH, NUM_WORKERS_INFERENCIA
 from src.inference.diagnostico import diagnosticar_imagen_pil
+from src.ingestion.hdfs_client import leer_bytes, listar_archivos, listar_subcarpetas
 
 logger = logging.getLogger("mangovision.workers")
 
@@ -41,23 +43,28 @@ def _marcar_procesados(lotes_nuevos):
 
 
 def listar_lotes_pendientes():
-    """Carpetas lote_ingesta=* aterrizadas en el Data Lake que aun no pasaron por inferencia."""
-    raiz = Path(HDFS_RAW_PATH_LOCAL)
-    if not raiz.exists():
-        return []
+    """Carpetas lote_ingesta=* aterrizadas en el Data Lake (HDFS real) que aun no pasaron por inferencia."""
     procesados = _lotes_procesados()
-    carpetas = sorted(p.name for p in raiz.iterdir() if p.is_dir() and p.name.startswith("lote_ingesta="))
+    carpetas = [c for c in listar_subcarpetas(HDFS_RAW_PATH_WEBHDFS) if c.startswith("lote_ingesta=")]
     return [c for c in carpetas if c not in procesados]
 
 
 def _imagenes_de_lote(nombre_lote):
-    carpeta = Path(HDFS_RAW_PATH_LOCAL) / nombre_lote
+    carpeta = f"{HDFS_RAW_PATH_WEBHDFS.rstrip('/')}/{nombre_lote}"
+    nombres_json = {n for n in listar_archivos(carpeta) if n.endswith(".json")}
+    nombres_jpg = {n for n in listar_archivos(carpeta) if n.endswith(".jpg")}
+
     items = []
-    for ruta_metadata in sorted(carpeta.glob("*.json")):
-        ruta_imagen = ruta_metadata.with_suffix(".jpg")
-        if ruta_imagen.exists():
-            metadata = json.loads(ruta_metadata.read_text(encoding="utf-8"))
-            items.append({"ruta_imagen": ruta_imagen, "metadata": metadata, "lote_ingesta": nombre_lote})
+    for nombre_metadata in sorted(nombres_json):
+        nombre_imagen = nombre_metadata[: -len(".json")] + ".jpg"
+        if nombre_imagen not in nombres_jpg:
+            continue
+        metadata = json.loads(leer_bytes(f"{carpeta}/{nombre_metadata}").decode("utf-8"))
+        items.append({
+            "ruta_imagen_hdfs": f"{carpeta}/{nombre_imagen}",
+            "metadata": metadata,
+            "lote_ingesta": nombre_lote,
+        })
     return items
 
 
@@ -66,9 +73,9 @@ def _procesar_chunk(chunk, modelo, device, preprocess):
     for item in chunk:
         inicio = time.perf_counter()
         try:
-            imagen = Image.open(item["ruta_imagen"]).convert("RGB")
+            imagen = Image.open(io.BytesIO(leer_bytes(item["ruta_imagen_hdfs"]))).convert("RGB")
         except Exception:
-            logger.warning("Imagen ilegible en %s, se omite.", item["ruta_imagen"])
+            logger.warning("Imagen ilegible en %s, se omite.", item["ruta_imagen_hdfs"])
             continue
         diagnostico = diagnosticar_imagen_pil(imagen, modelo, device, preprocess)
         duracion = time.perf_counter() - inicio

@@ -2,14 +2,14 @@
 Pipeline distribuido de inferencia batch sobre el Data Lake en HDFS.
 
 Explota la localidad de los datos de Apache Spark: cada particion del
-DataFrame es procesada por un Executor que carga el modelo ResNet18 UNA SOLA
+DataFrame es procesada por un Executor que carga el modelo ResNet50 UNA SOLA
 VEZ por particion (no por fila) mediante `mapInPandas`, evitando tanto la
 recarga repetida del modelo como el colapso de memoria de los nodos.
 
 Decisiones de escala para >10k imagenes:
 
 1. Estrategia de paralelismo: Data Parallelism, no Model Parallelism.
-   ResNet18 cabe entero en la memoria de cualquier executor (~45MB de
+   ResNet50 cabe entero en la memoria de cualquier executor (~98MB de
    pesos); particionar el propio modelo entre nodos (tecnica reservada
    para modelos que no caben en un solo dispositivo, p.ej. LLMs) no aplica
    aqui. El cuello de botella es el volumen de imagenes, no el tamano de
@@ -33,7 +33,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType
 
 from src.config import HDFS_RAW_PARQUET_PATH, HDFS_CURATED_RESULTS_PATH, MLFLOW_MODEL_NAME, MLFLOW_MODEL_STAGE
-from src.models.resnet18_custom import (
+from src.models.resnet50_custom import (
     cargar_modelo_mlflow_registry,
     cargar_imagen_hdfs,
     obtener_transformaciones_validacion,
@@ -48,7 +48,7 @@ PARTICIONES_POR_NUCLEO = 3
 IMAGENES_POR_PARTICION_OBJETIVO = 300
 
 
-def batch_resnet18_inference(iterator):
+def batch_resnet50_inference(iterator):
     """Inicializacion unica del modelo por particion en el nodo Executor."""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     modelo = cargar_modelo_mlflow_registry(MLFLOW_MODEL_NAME, stage=MLFLOW_MODEL_STAGE).to(device)
@@ -95,7 +95,7 @@ def ejecutar_pipeline_batch(lote_ingesta=None):
     num_particiones = calcular_particiones_optimas(spark, df_imagenes.count())
 
     df_resultados = df_imagenes.repartition(num_particiones).mapInPandas(
-        batch_resnet18_inference, schema=esquema_salida
+        batch_resnet50_inference, schema=esquema_salida
     )
 
     escritor = df_resultados.write.mode("overwrite")

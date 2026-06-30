@@ -15,8 +15,9 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.config import BUFFER_LOCAL_PATH, STAGING_PATH, HDFS_RAW_PATH_LOCAL
+from src.config import BUFFER_LOCAL_PATH, STAGING_PATH, HDFS_RAW_PATH_WEBHDFS
 from src.ingestion.edge_buffer import listar_pendientes
+from src.ingestion.hdfs_client import subir_archivo
 
 
 def hay_conexion(verificador_conexion=None):
@@ -55,25 +56,27 @@ def drenar_buffer_a_staging(carpeta_buffer=None, carpeta_staging=None, verificad
     return movidas
 
 
-def subir_staging_a_hdfs(lote_ingesta=None, carpeta_staging=None, carpeta_hdfs_local=None):
+def subir_staging_a_hdfs(lote_ingesta=None, carpeta_staging=None, carpeta_hdfs_raiz=None):
     """
-    Aterriza lo que esta en staging dentro del Data Lake, particionado por
-    `lote_ingesta` (por defecto la fecha UTC de la subida). Esto es lo que en
-    produccion seria `hdfs dfs -put` hacia `raw/lote_ingesta=<fecha>/`.
+    Aterriza lo que esta en staging dentro del Data Lake en HDFS real,
+    particionado por `lote_ingesta` (por defecto la fecha UTC de la subida).
+    Equivalente a `hdfs dfs -put` hacia `raw/lote_ingesta=<fecha>/`, pero via
+    WebHDFS (ver `src/ingestion/hdfs_client.py`).
     """
     carpeta_staging = Path(carpeta_staging or STAGING_PATH)
     lote_ingesta = lote_ingesta or datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-    carpeta_destino = Path(carpeta_hdfs_local or HDFS_RAW_PATH_LOCAL) / f"lote_ingesta={lote_ingesta}"
-    carpeta_destino.mkdir(parents=True, exist_ok=True)
+    carpeta_destino_hdfs = f"{(carpeta_hdfs_raiz or HDFS_RAW_PATH_WEBHDFS).rstrip('/')}/lote_ingesta={lote_ingesta}"
 
     subidas = []
     for ruta_metadata in sorted(carpeta_staging.glob("*.json")):
         ruta_imagen = ruta_metadata.with_suffix(".jpg")
         if not ruta_imagen.exists():
             continue
-        shutil.move(str(ruta_imagen), carpeta_destino / ruta_imagen.name)
-        shutil.move(str(ruta_metadata), carpeta_destino / ruta_metadata.name)
+        subir_archivo(ruta_imagen, f"{carpeta_destino_hdfs}/{ruta_imagen.name}")
+        subir_archivo(ruta_metadata, f"{carpeta_destino_hdfs}/{ruta_metadata.name}")
+        ruta_imagen.unlink()
+        ruta_metadata.unlink()
         subidas.append(ruta_imagen.stem)
 
-    return {"lote_ingesta": lote_ingesta, "subidas": subidas, "carpeta_destino": str(carpeta_destino)}
+    return {"lote_ingesta": lote_ingesta, "subidas": subidas, "carpeta_destino": carpeta_destino_hdfs}

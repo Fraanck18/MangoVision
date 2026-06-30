@@ -457,7 +457,16 @@ input[type="file"] { display: none; }
 .estado-pill.sin_iniciar { background: var(--bg); color: var(--text-muted); }
 .estado-pill.error { background: var(--red-soft); color: var(--red); }
 
+.panel-titulo-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+.estado-pill.detenido { background: var(--red-soft); color: var(--red); }
+.estado-pill.iniciando { background: var(--amber-soft); color: var(--amber); }
+
 .entrenamiento-candidatos { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 12px; }
+.entrenamiento-historial { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.entrenamiento-historial-item {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  font-size: 12.5px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+}
 .resultado-entrenamiento {
   border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px;
   display: flex; flex-direction: column; gap: 6px;

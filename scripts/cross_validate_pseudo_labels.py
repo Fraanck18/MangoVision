@@ -25,7 +25,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
 from src.config import CLASS_NAMES, IMAGE_SIZE
-from src.models.resnet18_custom import ResNet18MangoQC, obtener_transformaciones_validacion
+from src.models.resnet50_custom import ResNet50MangoQC, obtener_transformaciones_validacion
 from src.models.baseline_svm import extraer_descriptor_hog
 
 CARPETA_FLIR = RAIZ / "dataset_mangos" / "extracted" / "flir_one" / "Thermal Mango Image Dataset - FLIR One" / "Thermal"
@@ -35,7 +35,7 @@ SALIDA = RAIZ / "dataset_mangos" / "flir_pseudo_labels.json"
 
 
 def predecir_resnet(rutas):
-    modelo = ResNet18MangoQC()
+    modelo = ResNet50MangoQC()
     modelo.load_state_dict(torch.load(PESOS_RESNET, map_location="cpu"))
     modelo.eval()
     preprocess = obtener_transformaciones_validacion()

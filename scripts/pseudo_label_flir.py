@@ -25,7 +25,7 @@ sys.path.insert(0, str(RAIZ))
 from PIL import Image
 
 from src.config import CLASS_NAMES
-from src.models.resnet18_custom import ResNet18MangoQC, obtener_transformaciones_validacion
+from src.models.resnet50_custom import ResNet50MangoQC, obtener_transformaciones_validacion
 
 CARPETA_FLIR = RAIZ / "dataset_mangos" / "extracted" / "flir_one" / "Thermal Mango Image Dataset - FLIR One" / "Thermal"
 PESOS_MODELO = RAIZ / "dataset_mangos" / "resnet18_mango_qc.pt"
@@ -35,7 +35,7 @@ UMBRAL_CONFIANZA = 0.90
 
 
 def cargar_modelo_entrenado():
-    modelo = ResNet18MangoQC()
+    modelo = ResNet50MangoQC()
     modelo.load_state_dict(torch.load(PESOS_MODELO, map_location="cpu"))
     modelo.eval()
     return modelo

@@ -127,7 +127,12 @@
     <section id="panel-entrenamiento" class="panel">
       <div class="panel-titulo">
         <h2>🧠 Entrenamiento del Modelo (3 entrenamientos independientes: 5, 10 y 15 épocas)</h2>
-        <button id="btn-entrenar" class="boton">▶ Iniciar entrenamiento</button>
+        <div class="panel-titulo-acciones">
+          <button id="btn-entrenar" class="boton">▶ Iniciar entrenamiento</button>
+          <button id="btn-detener-entrenamiento" class="boton" disabled>■ Detener</button>
+          <button id="btn-exportar-reporte" class="boton" disabled>⬇ Reporte CSV</button>
+          <button id="btn-ver-historial" class="boton">📜 Historial</button>
+        </div>
       </div>
       <div class="entrenamiento-fila">
         <span id="estado-entrenamiento-pill" class="estado-pill sin_iniciar">sin iniciar</span>
@@ -135,6 +140,7 @@
         <span id="entrenamiento-texto" class="entrenamiento-info">Sin entrenamientos registrados todavía.</span>
       </div>
       <div id="entrenamiento-candidatos" class="entrenamiento-candidatos"></div>
+      <div id="entrenamiento-historial" class="entrenamiento-historial oculto"></div>
     </section>
 
     <section class="panel">

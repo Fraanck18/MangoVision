@@ -1,46 +1,58 @@
 """
 Microservicio REST de diagnostico en tiempo real para integracion en la faja
-transportadora industrial. Intenta cargar el modelo ResNet18 de produccion
+transportadora industrial. Intenta cargar el modelo ResNet50 de produccion
 desde el Model Registry de MLflow al arrancar; si no hay servidor MLflow
 disponible (entorno local/demo) cae a los pesos locales entrenados por
-`scripts/train_resnet18.py`. Expone inferencia sincrona sobre imagenes
+`scripts/train_resnet50.py`. Expone inferencia sincrona sobre imagenes
 termicas individuales y el estado del entrenamiento por epocas en curso.
 """
+import csv
 import io
 import json
 import logging
 import subprocess
 import sys
 import threading
+import time
+from io import StringIO
 from pathlib import Path
 
 import torch
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from PIL import Image
 from pydantic import BaseModel
 
-from src.config import HDFS_RAW_PATH_LOCAL, INTERVALO_INGESTA_SEGUNDOS, MLFLOW_MODEL_NAME, MLFLOW_MODEL_STAGE, NUM_CLASSES
+from src.config import (
+    HDFS_NAMENODE,
+    INTERVALO_INGESTA_SEGUNDOS,
+    MLFLOW_MODEL_NAME,
+    MLFLOW_MODEL_STAGE,
+    NUM_CLASSES,
+    PREFERENCIAS_USUARIO_PATH,
+)
 from src.inference.diagnostico import diagnosticar_imagen_pil
 from src.ingestion.scheduler import activar_fallo_sensor, iniciar_scheduler_ingesta
-from src.models.resnet18_custom import (
-    ResNet18MangoQC,
+from src.models.resnet50_custom import (
+    ResNet50MangoQC,
     cargar_modelo_mlflow_registry,
     obtener_transformaciones_validacion,
 )
+from src.pipeline.historial_entrenamiento import agregar_a_historial, escribir_estado, leer_estado, leer_historial
 from src.pipeline.worker_inference import analizar_lotes_pendientes, listar_lotes_pendientes
 from src.streaming.evaluador_online import calcular_metricas_vivo, iniciar_evaluador_online
 
 logger = logging.getLogger("mangovision.api")
 
 RAIZ = Path(__file__).resolve().parent.parent.parent
-PESOS_LOCALES = RAIZ / "dataset_mangos" / "resnet18_mango_qc_multiclase.pt"
-ESTADO_ENTRENAMIENTO = RAIZ / "dataset_mangos" / "estado_entrenamiento.json"
-SCRIPT_ENTRENAMIENTO = RAIZ / "scripts" / "train_resnet18.py"
+PESOS_LOCALES = RAIZ / "dataset_mangos" / "resnet50_mango_qc_multiclase.pt"
+SCRIPT_ENTRENAMIENTO = RAIZ / "scripts" / "train_resnet50.py"
+PREFERENCIAS_USUARIO = Path(PREFERENCIAS_USUARIO_PATH)
 
 app = FastAPI(
     title="MangoVision QC API",
-    description="Diagnostico no destructivo de calidad/madurez de mango via termografia + ResNet18",
+    description="Diagnostico no destructivo de calidad/madurez de mango via termografia + ResNet50",
     version="1.1.0",
 )
 
@@ -53,7 +65,7 @@ app.add_middleware(
 
 estado_modelo = {"modelo": None, "device": None, "preprocess": None, "origen": None}
 entrenamiento_lock = threading.Lock()
-entrenamiento_en_curso = {"activo": False}
+entrenamiento_en_curso = {"activo": False, "proceso": None, "detenido_manualmente": False}
 
 
 class DiagnosticoResponse(BaseModel):
@@ -68,7 +80,7 @@ class DiagnosticoResponse(BaseModel):
 def _cargar_pesos_locales(device):
     if not PESOS_LOCALES.exists():
         raise FileNotFoundError(f"No existen pesos locales en {PESOS_LOCALES}")
-    modelo = ResNet18MangoQC(num_classes=NUM_CLASSES)
+    modelo = ResNet50MangoQC(num_classes=NUM_CLASSES)
     modelo.load_state_dict(torch.load(PESOS_LOCALES, map_location=device))
     return modelo.to(device)
 
@@ -126,12 +138,21 @@ async def diagnosticar_mango(archivo: UploadFile = File(...)):
 
 
 def _ejecutar_entrenamiento():
+    """
+    Lanza el script de entrenamiento como subproceso real (no `subprocess.run`
+    bloqueante) para poder conservar una referencia (`Popen`) y terminarlo
+    desde `/entrenamiento/detener` si el usuario lo pide a mitad de corrida.
+    """
+    proceso = subprocess.Popen([sys.executable, str(SCRIPT_ENTRENAMIENTO)], cwd=str(RAIZ))
+    entrenamiento_en_curso["proceso"] = proceso
     try:
-        subprocess.run([sys.executable, str(SCRIPT_ENTRENAMIENTO)], cwd=str(RAIZ), check=True)
-    except Exception:
-        logger.exception("El proceso de entrenamiento por epocas fallo.")
+        codigo_salida = proceso.wait()
+        if codigo_salida != 0 and not entrenamiento_en_curso["detenido_manualmente"]:
+            logger.error("El proceso de entrenamiento termino con codigo %s.", codigo_salida)
     finally:
         entrenamiento_en_curso["activo"] = False
+        entrenamiento_en_curso["proceso"] = None
+        entrenamiento_en_curso["detenido_manualmente"] = False
 
 
 @app.post("/entrenamiento/iniciar")
@@ -141,15 +162,108 @@ def iniciar_entrenamiento(background_tasks: BackgroundTasks):
             raise HTTPException(status_code=409, detail="Ya hay un entrenamiento por epocas en curso.")
         entrenamiento_en_curso["activo"] = True
 
+    # Estado transitorio escrito de inmediato (antes de que el subproceso
+    # siquiera termine de arrancar e importar torch). Sin esto hay una
+    # ventana de varios segundos en la que /entrenamiento/estado seguiria
+    # mostrando "completado" de la corrida ANTERIOR, y si el usuario pulsa
+    # Detener en ese instante, /entrenamiento/detener registraria esa corrida
+    # vieja en el historial mal etiquetada como "detenido".
+    escribir_estado({"estado": "iniciando", "inicio": time.time()})
+
     background_tasks.add_task(_ejecutar_entrenamiento)
     return {"estado": "iniciado"}
 
 
+@app.post("/entrenamiento/detener")
+def detener_entrenamiento():
+    """
+    Termina el subproceso de entrenamiento en curso (SIGTERM). El estado
+    queda registrado como "detenido" tanto en estado_entrenamiento.json como
+    en el historial append-only, para que quede claro que esa corrida no
+    completo sus 3 candidatos por intervencion manual, no por error.
+    """
+    with entrenamiento_lock:
+        proceso = entrenamiento_en_curso["proceso"]
+        if not entrenamiento_en_curso["activo"] or proceso is None:
+            raise HTTPException(status_code=409, detail="No hay un entrenamiento en curso para detener.")
+        entrenamiento_en_curso["detenido_manualmente"] = True
+        proceso.terminate()
+
+    estado_previo = leer_estado()
+    resumen_detenido = {**estado_previo, "estado": "detenido", "fin": time.time()}
+    agregar_a_historial(resumen_detenido)
+    return {"estado": "detenido"}
+
+
 @app.get("/entrenamiento/estado")
 def estado_entrenamiento():
-    if not ESTADO_ENTRENAMIENTO.exists():
-        return {"estado": "sin_iniciar"}
-    return json.loads(ESTADO_ENTRENAMIENTO.read_text(encoding="utf-8"))
+    return leer_estado()
+
+
+@app.get("/entrenamiento/historial")
+def historial_entrenamiento():
+    """Todas las corridas pasadas (completadas o detenidas), no solo la mas reciente."""
+    return {"corridas": leer_historial()}
+
+
+@app.get("/entrenamiento/reporte.csv")
+def exportar_reporte_csv():
+    """Reporte de clasificacion (precision/recall/f1/support por clase) de la corrida actual, como CSV descargable."""
+    estado = leer_estado()
+    reporte = estado.get("reporte_test")
+    if not reporte:
+        raise HTTPException(status_code=404, detail="No hay un reporte de clasificacion disponible todavia.")
+
+    filas = _filas_reporte(reporte)
+    columnas = sorted({columna for fila in filas for columna in fila if columna != "clase"})
+
+    buffer = StringIO()
+    escritor = csv.writer(buffer)
+    escritor.writerow(["clase", *columnas])
+    for fila in filas:
+        escritor.writerow([fila["clase"], *[fila.get(columna, "") for columna in columnas]])
+    buffer.seek(0)
+
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=reporte_clasificacion.csv"},
+    )
+
+
+_METRICAS_REPORTE = {"precision", "recall", "f1-score", "support"}
+
+
+def _filas_reporte(reporte):
+    """
+    `reporte_test` puede venir en dos orientaciones segun que rama de
+    `generar_reporte` (en train_resnet50.py) lo produjo:
+      - {metrica: {clase: valor}}  (pandas DataFrame.to_dict() por defecto)
+      - {clase: {metrica: valor}}  (sklearn classification_report output_dict)
+    Se normalizan ambas a una lista de filas {clase, **metricas}.
+    """
+    if set(reporte.keys()) <= _METRICAS_REPORTE:
+        clases = sorted({clase for metrica in reporte.values() for clase in metrica})
+        return [
+            {"clase": clase, **{metrica: reporte[metrica].get(clase, "") for metrica in reporte}}
+            for clase in clases
+        ]
+    return [{"clase": clase, **metricas} for clase, metricas in reporte.items()]
+
+
+@app.get("/config/preferencias")
+def obtener_preferencias():
+    """Preferencias de UI persistidas en backend (tema, etc.), no solo en localStorage del navegador actual."""
+    if not PREFERENCIAS_USUARIO.exists():
+        return {}
+    return json.loads(PREFERENCIAS_USUARIO.read_text(encoding="utf-8"))
+
+
+@app.post("/config/preferencias")
+def guardar_preferencias(preferencias: dict):
+    PREFERENCIAS_USUARIO.parent.mkdir(parents=True, exist_ok=True)
+    PREFERENCIAS_USUARIO.write_text(json.dumps(preferencias, ensure_ascii=False, indent=2), encoding="utf-8")
+    return preferencias
 
 
 @app.get("/hdfs/estado")
@@ -160,7 +274,7 @@ def estado_hdfs():
         "intervalo_ingesta_s": INTERVALO_INGESTA_SEGUNDOS,
         "lotes_pendientes": pendientes,
         "total_lotes_pendientes": len(pendientes),
-        "ruta_data_lake": str(HDFS_RAW_PATH_LOCAL),
+        "ruta_data_lake": HDFS_NAMENODE,
     }
 
 

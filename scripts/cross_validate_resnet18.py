@@ -33,8 +33,8 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
 from src.config import RANDOM_SEED
-from src.models.resnet18_custom import (
-    ResNet18MangoQC,
+from src.models.resnet50_custom import (
+    ResNet50MangoQC,
     obtener_transformaciones_entrenamiento,
     obtener_transformaciones_validacion,
 )
@@ -92,7 +92,7 @@ def entrenar_y_evaluar_fold(rutas, etiquetas, indices_train, indices_test, devic
     loader_train = DataLoader(dataset_train, batch_size=16, shuffle=True, drop_last=True)
     loader_test = DataLoader(dataset_test, batch_size=16, shuffle=False)
 
-    modelo = ResNet18MangoQC(num_classes=2).to(device)
+    modelo = ResNet50MangoQC(num_classes=2).to(device)
     optimizador = torch.optim.Adam(filter(lambda p: p.requires_grad, modelo.parameters()), lr=1e-3)
     funcion_perdida = torch.nn.CrossEntropyLoss()
 

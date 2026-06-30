@@ -1,0 +1,62 @@
+# Imagen de Spark para el cluster real (master + workers) que ejecuta
+# src/pipeline/spark_inference.py contra el HDFS real (docker-compose.hdfs.yml).
+#
+# Parte de la imagen oficial de Spark 3.5.1 (misma version que pyspark en
+# requirements.txt) y le agrega DOS cosas que la imagen base no trae pero que
+# este pipeline necesita de verdad, no solo en teoria:
+#
+# 1. Dependencias Python (torch/torchvision/mlflow/pyarrow/pillow): el
+#    Executor necesita cargar ResNet50 y hacer inferencia dentro de
+#    `mapInPandas`, no solo mover DataFrames.
+# 2. Un cliente Hadoop NATIVO real (binarios de Apache Hadoop, no solo los
+#    JARs que trae Spark): `cargar_imagen_hdfs` usa pyarrow.fs.FileSystem,
+#    que carga `libhdfs.so` via JNI para leer cada imagen individual del
+#    Data Lake. Sin esto, pyarrow falla con "Unable to load libhdfs" (el
+#    mismo error que se reprodujo al intentar leer HDFS nativo desde el host
+#    Windows sin Hadoop instalado).
+FROM apache/spark:3.5.1-python3
+
+USER root
+
+ARG HADOOP_VERSION=3.3.6
+RUN curl -fsSL "https://archive.apache.org/dist/hadoop/common/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz" -o /tmp/hadoop.tgz \
+    && mkdir -p /opt/hadoop \
+    && tar -xzf /tmp/hadoop.tgz -C /opt/hadoop --strip-components=1 \
+    && rm /tmp/hadoop.tgz
+
+ENV HADOOP_HOME=/opt/hadoop
+ENV LD_LIBRARY_PATH=${HADOOP_HOME}/lib/native:${LD_LIBRARY_PATH}
+ENV PATH=${HADOOP_HOME}/bin:${PATH}
+
+# CLASSPATH con wildcards de directorio (la JVM expande el "*" sola al
+# arrancar, vía libhdfs/JNI): se fija como ENV de la IMAGEN, no calculado en
+# el entrypoint, porque `docker exec` (usado para depurar/probar) arranca un
+# proceso nuevo que NO hereda variables exportadas por el entrypoint del
+# proceso principal (PID 1) -- solo lo que esta horneado en la imagen.
+ENV CLASSPATH="${HADOOP_HOME}/etc/hadoop:${HADOOP_HOME}/share/hadoop/common/lib/*:${HADOOP_HOME}/share/hadoop/common/*:${HADOOP_HOME}/share/hadoop/hdfs:${HADOOP_HOME}/share/hadoop/hdfs/lib/*:${HADOOP_HOME}/share/hadoop/hdfs/*:${HADOOP_HOME}/share/hadoop/mapreduce/lib/*:${HADOOP_HOME}/share/hadoop/mapreduce/*:${HADOOP_HOME}/share/hadoop/yarn/lib/*:${HADOOP_HOME}/share/hadoop/yarn/*:/opt/spark/jars/*"
+
+# torch/torchvision desde el indice CPU-only de PyTorch (--index-url
+# exclusivo, no --extra-index-url): el wheel default de PyPI declara
+# ~2GB de dependencias nvidia-cuda-* (cublas, cudnn, cufft, etc.) que esta
+# imagen nunca usa (los Executors corren en CPU). Con --extra-index-url pip
+# seguiria resolviendo la version "2.3.1" de PyPI (con CUDA) porque el build
+# CPU tiene el sufijo local "+cpu"; forzando solo este indice se evita.
+# typing-extensions se fija explicitamente: la imagen base trae Python 3.8 y
+# las versiones >=4.13 de typing-extensions ya exigen Python >=3.9.
+RUN pip install --no-cache-dir torch==2.3.1+cpu torchvision==0.18.1+cpu "typing-extensions==4.12.2" \
+    --index-url https://download.pytorch.org/whl/cpu \
+    --extra-index-url https://pypi.org/simple
+
+COPY requirements-spark.txt /tmp/requirements-spark.txt
+RUN pip install --no-cache-dir -r /tmp/requirements-spark.txt
+
+COPY src/ /opt/mangovision/src/
+ENV PYTHONPATH=/opt/mangovision:${PYTHONPATH}
+
+# `libhdfs` (JNI) necesita el CLASSPATH completo de Hadoop+Spark en runtime
+# para resolver las clases Java que invoca; se calcula en el entrypoint (no
+# en build time) porque depende del contenido final de ambos directorios de
+# jars.
+COPY docker/spark-entrypoint.sh /opt/spark-entrypoint.sh
+RUN chmod +x /opt/spark-entrypoint.sh
+ENTRYPOINT ["/opt/spark-entrypoint.sh"]

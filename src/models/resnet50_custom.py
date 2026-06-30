@@ -1,27 +1,30 @@
 """
-ResNet18 con Transfer Learning y cabecera personalizada para diagnostico
+ResNet50 con Transfer Learning y cabecera personalizada para diagnostico
 termico no destructivo de mango.
 
 Se congelan los bloques convolucionales iniciales (extractor de bordes y
 texturas de bajo nivel, genericos para cualquier dominio visual) y se
 reentrenan unicamente las capas profundas finales junto con una cabecera de
 clasificacion regularizada (BatchNorm1d + Dropout) para mitigar el overfitting
-dado el tamano acotado del dataset (1,066 imagenes).
+dado el tamano acotado del dataset (1,066 imagenes). ResNet50 usa bloques
+Bottleneck (3 convoluciones por bloque, ~98MB de pesos) en vez de los
+BasicBlock de dos convoluciones de ResNet18 (~45MB): mas capacidad de
+representacion a costa de mas computo por imagen.
 """
 import torch
 import torch.nn as nn
 from torchvision import transforms
-from torchvision.models import resnet18, ResNet18_Weights
+from torchvision.models import resnet50, ResNet50_Weights
 
 from src.config import IMAGE_SIZE, IMAGENET_MEAN, IMAGENET_STD, NUM_CLASSES
 
 
-class ResNet18MangoQC(nn.Module):
-    """ResNet18 preentrenada en ImageNet con cabecera personalizada de clasificacion."""
+class ResNet50MangoQC(nn.Module):
+    """ResNet50 preentrenada en ImageNet con cabecera personalizada de clasificacion."""
 
     def __init__(self, num_classes=NUM_CLASSES, dropout_p=0.5, congelar_backbone=True, capas_descongeladas=2):
         super().__init__()
-        backbone = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        backbone = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
         num_features = backbone.fc.in_features
         backbone.fc = nn.Identity()
         self.backbone = backbone
@@ -89,7 +92,7 @@ def cargar_imagen_hdfs(uri_hdfs):
 
 
 if __name__ == "__main__":
-    modelo = ResNet18MangoQC()
+    modelo = ResNet50MangoQC()
     entrada_simulada = torch.randn(4, 3, IMAGE_SIZE, IMAGE_SIZE)
     salida = modelo(entrada_simulada)
     print(f"Forma de salida (batch, num_clases): {salida.shape}")

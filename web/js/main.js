@@ -32,6 +32,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("input-imagen").addEventListener("change", manejarSeleccionImagen);
   document.getElementById("btn-analizar").addEventListener("click", manejarClickAnalizar);
   document.getElementById("btn-entrenar").addEventListener("click", manejarClickEntrenar);
+  document.getElementById("btn-detener-entrenamiento").addEventListener("click", manejarClickDetenerEntrenamiento);
+  document.getElementById("btn-exportar-reporte").addEventListener("click", exportarReporteCSV);
+  document.getElementById("btn-ver-historial").addEventListener("click", alternarHistorialEntrenamiento);
   document.getElementById("btn-exportar").addEventListener("click", exportarEstadoComoJSON);
   document.getElementById("btn-fallo-sensor").addEventListener("click", manejarFalloSensor);
 
@@ -250,16 +253,31 @@ async function actualizarEstadoEntrenamiento() {
   const barra = document.getElementById("entrenamiento-barra-relleno");
   const texto = document.getElementById("entrenamiento-texto");
   const candidatos = document.getElementById("entrenamiento-candidatos");
+  const btnEntrenar = document.getElementById("btn-entrenar");
+  const btnDetener = document.getElementById("btn-detener-entrenamiento");
+  const btnExportarReporte = document.getElementById("btn-exportar-reporte");
 
   try {
     const estado = await consultarEstadoEntrenamiento();
     pill.className = `estado-pill ${estado.estado}`;
     pill.textContent = estado.estado.replace("_", " ");
 
+    const enProgreso = estado.estado === "en_progreso" || estado.estado === "iniciando";
+    btnEntrenar.disabled = enProgreso;
+    btnDetener.disabled = !enProgreso;
+    btnExportarReporte.disabled = !estado.reporte_test;
+
     if (estado.estado === "sin_iniciar") {
       barra.style.width = "0%";
       texto.textContent = "Sin entrenamientos registrados todavía.";
       candidatos.innerHTML = "";
+      return;
+    }
+
+    if (estado.estado === "iniciando") {
+      barra.style.width = "0%";
+      texto.textContent = "Arrancando el proceso de entrenamiento…";
+      barra.parentElement.classList.remove("oculto");
       return;
     }
 
@@ -276,6 +294,9 @@ async function actualizarEstadoEntrenamiento() {
     } else if (estado.estado === "completado") {
       texto.textContent = `${estado.resultados_candidatos.length} entrenamientos independientes completados.`;
       barra.parentElement.classList.add("oculto");
+    } else if (estado.estado === "detenido") {
+      texto.textContent = "Entrenamiento detenido manualmente antes de completar los 3 candidatos.";
+      barra.parentElement.classList.add("oculto");
     }
 
     renderCandidatosEntrenamiento(estado, candidatos);
@@ -283,6 +304,56 @@ async function actualizarEstadoEntrenamiento() {
     pill.className = "estado-pill error";
     pill.textContent = "sin conexión";
     texto.textContent = "No se pudo consultar /entrenamiento/estado.";
+  }
+}
+
+async function manejarClickDetenerEntrenamiento() {
+  const boton = document.getElementById("btn-detener-entrenamiento");
+  boton.disabled = true;
+  try {
+    await detenerEntrenamiento();
+    mostrarToast("Entrenamiento detenido. Esa corrida quedó registrada en el historial.", true);
+    actualizarEstadoEntrenamiento();
+  } catch (error) {
+    mostrarToast(`No se pudo detener el entrenamiento: ${error.message}`, true);
+  }
+}
+
+function exportarReporteCSV() {
+  const enlace = document.createElement("a");
+  enlace.href = urlReporteCSV();
+  enlace.download = "reporte_clasificacion.csv";
+  enlace.click();
+}
+
+let historialVisible = false;
+
+async function alternarHistorialEntrenamiento() {
+  const contenedor = document.getElementById("entrenamiento-historial");
+  historialVisible = !historialVisible;
+  contenedor.classList.toggle("oculto", !historialVisible);
+  if (!historialVisible) return;
+
+  try {
+    const { corridas } = await consultarHistorialEntrenamiento();
+    if (corridas.length === 0) {
+      contenedor.innerHTML = `<span class="entrenamiento-info">Todavía no hay corridas completadas en el historial.</span>`;
+      return;
+    }
+    contenedor.innerHTML = corridas.slice().reverse().map((corrida) => {
+      const fecha = corrida.fin ? new Date(corrida.fin * 1000).toLocaleString() : "—";
+      const detalle = corrida.estado === "detenido"
+        ? "detenida manualmente"
+        : `mejor: ${corrida.mejor_epocas} épocas · accuracy_test: ${(corrida.accuracy_test * 100).toFixed(1)}%`;
+      return `
+        <div class="entrenamiento-historial-item">
+          <span>${fecha}</span>
+          <span class="estado-pill ${corrida.estado}">${corrida.estado}</span>
+          <span>${detalle}</span>
+        </div>`;
+    }).join("");
+  } catch (error) {
+    contenedor.innerHTML = `<span class="entrenamiento-info">No se pudo cargar el historial: ${error.message}</span>`;
   }
 }
 
@@ -367,22 +438,36 @@ function exportarEstadoComoJSON() {
 }
 
 /**
- * Selector de tema (Claro / Oscuro / Neón). El tema se guarda en localStorage
- * y se aplica mediante el atributo data-tema en <html>, que styles.css usa
- * para sobreescribir las variables CSS (--bg, --surface, --text, etc.). El
- * script inline en <head> ya aplico el tema guardado antes de pintar, para
- * que aqui solo falte sincronizar cual boton se ve "activo".
+ * Selector de tema (Claro / Oscuro / Neón). El script inline en <head> ya
+ * aplico el tema de localStorage antes de pintar (evita parpadeo); aqui se
+ * sincroniza ademas con el backend (`/config/preferencias`), que es la
+ * fuente de verdad real -- localStorage queda solo como cache para que el
+ * script inline no tenga que esperar una llamada de red en cada carga.
  */
 function inicializarSelectorTema() {
   const select = document.getElementById("selector-tema");
   const temaActual = document.documentElement.dataset.tema || "claro";
   select.value = temaActual;
   select.addEventListener("change", () => cambiarTema(select.value));
+
+  obtenerPreferencias()
+    .then((preferencias) => {
+      if (preferencias.tema && preferencias.tema !== select.value) {
+        select.value = preferencias.tema;
+        aplicarTema(preferencias.tema);
+      }
+    })
+    .catch(() => { /* backend sin conexion: se queda con lo que ya aplico localStorage */ });
+}
+
+function aplicarTema(tema) {
+  document.documentElement.dataset.tema = tema;
+  localStorage.setItem("thermomango_tema", tema);
 }
 
 function cambiarTema(tema) {
-  document.documentElement.dataset.tema = tema;
-  localStorage.setItem("thermomango_tema", tema);
+  aplicarTema(tema);
+  guardarPreferencias({ tema }).catch(() => { /* se queda persistido en localStorage al menos */ });
 }
 
 function mostrarToast(mensaje, esError = false) {

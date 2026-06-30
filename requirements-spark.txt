@@ -1,0 +1,14 @@
+# Dependencias Python para los contenedores Spark (master/worker) de
+# Dockerfile.spark. Subconjunto de requirements.txt: sin fastapi/uvicorn/
+# pytest (eso es del backend, no del Executor), sin pyspark (ya viene en la
+# imagen base apache/spark). torch/torchvision NO van aqui: se instalan por
+# separado desde el indice CPU-only de PyTorch (ver Dockerfile.spark).
+#
+# pandas/numpy van en una version distinta a requirements.txt: la imagen base
+# apache/spark:3.5.1-python3 trae Python 3.8, y pandas==2.2.2/numpy==1.26.4
+# (los pines del resto del proyecto) ya no publican wheels para 3.8.
+mlflow==2.14.1
+pyarrow==15.0.2
+pillow==10.3.0
+pandas==2.0.3
+numpy==1.24.4

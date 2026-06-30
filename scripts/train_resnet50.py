@@ -1,5 +1,5 @@
 """
-Entrenamiento real de ResNet18MangoQC sobre el dataset preparado en
+Entrenamiento real de ResNet50MangoQC sobre el dataset preparado en
 `dataset_mangos/processed/` (ver scripts/prepare_real_dataset.py).
 
 En vez de una sola corrida a un numero fijo de epocas, se entrenan 3
@@ -31,9 +31,8 @@ carga entre nucleos, batches mas grandes (menos overhead de Python por paso),
 y pin_memory + non_blocking activados solo cuando hay GPU.
 
 Uso:
-    python scripts/train_resnet18.py
+    python scripts/train_resnet50.py
 """
-import json
 import os
 import sys
 import time
@@ -48,16 +47,16 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
 from src.config import CLASS_NAMES, RANDOM_SEED
-from src.models.resnet18_custom import (
-    ResNet18MangoQC,
+from src.models.resnet50_custom import (
+    ResNet50MangoQC,
     obtener_transformaciones_entrenamiento,
     obtener_transformaciones_validacion,
 )
 from src.models.evaluator import evaluar_convergencia_real
+from src.pipeline.historial_entrenamiento import agregar_a_historial, escribir_estado
 
 PROCESADOS = RAIZ / "dataset_mangos" / "processed"
-PESOS_SALIDA = RAIZ / "dataset_mangos" / "resnet18_mango_qc_multiclase.pt"
-ESTADO_ENTRENAMIENTO = RAIZ / "dataset_mangos" / "estado_entrenamiento.json"
+PESOS_SALIDA = RAIZ / "dataset_mangos" / "resnet50_mango_qc_multiclase.pt"
 
 EPOCAS_CANDIDATAS = [5, 10, 15]
 TASA_APRENDIZAJE_CABEZA = 1e-3
@@ -72,10 +71,6 @@ TAMANO_LOTE = 32
 # a la clase minoritaria, por eso se dejan activadas por defecto.
 USAR_WEIGHTED_CE = True
 USAR_OVERSAMPLING = True
-
-
-def escribir_estado(datos):
-    ESTADO_ENTRENAMIENTO.write_text(json.dumps(datos, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def construir_dataloaders(device):
@@ -199,7 +194,7 @@ def entrenar_candidato(num_epocas, device, inicio_global, resultados_previos, in
     torch.manual_seed(RANDOM_SEED)
     loader_train, loader_test, dataset_train = construir_dataloaders(device)
 
-    modelo = ResNet18MangoQC(capas_descongeladas=CAPAS_DESCONGELADAS).to(device)
+    modelo = ResNet50MangoQC(capas_descongeladas=CAPAS_DESCONGELADAS).to(device)
     optimizador = construir_optimizador(modelo)
 
     if USAR_WEIGHTED_CE:
@@ -258,6 +253,24 @@ def main():
     resultados = []
     modelos_entrenados = {}
 
+    # Estado "en_progreso" escrito ANTES de entrenar la primera epoca (que
+    # puede tardar varios segundos solo en cargar el dataset). Sin esto, si
+    # el usuario detiene el entrenamiento en ese primer tramo, /entrenamiento
+    # /detener leeria todavia el estado "completado" de la corrida ANTERIOR y
+    # lo registraria en el historial mal etiquetado como "detenido".
+    escribir_estado({
+        "estado": "en_progreso",
+        "candidatos_epocas": EPOCAS_CANDIDATAS,
+        "candidato_actual": EPOCAS_CANDIDATAS[0],
+        "indice_candidato": 1,
+        "total_candidatos": total_candidatos,
+        "epoca_actual": 0,
+        "epocas_totales": EPOCAS_CANDIDATAS[0],
+        "historial": [],
+        "resultados_candidatos": [],
+        "inicio": inicio_global,
+    })
+
     for i, num_epocas in enumerate(EPOCAS_CANDIDATAS, start=1):
         modelo, resultado = entrenar_candidato(num_epocas, device, inicio_global, resultados, i, total_candidatos)
         resultados.append(resultado)
@@ -276,7 +289,7 @@ def main():
         marca = " <- elegido" if r["epocas"] == mejor["epocas"] else ""
         print(f"  {r['epocas']:>2} epocas -> accuracy_test={r['accuracy_test']:.4f}{marca}")
 
-    escribir_estado({
+    resumen_corrida = {
         "estado": "completado",
         "candidatos_epocas": EPOCAS_CANDIDATAS,
         "resultados_candidatos": resultados,
@@ -289,7 +302,12 @@ def main():
         "accuracy_test": mejor["accuracy_test"],
         "reporte_test": mejor["reporte_test"],
         "pesos": str(PESOS_SALIDA),
-    })
+    }
+    escribir_estado(resumen_corrida)
+    # Append-only: a diferencia de estado_entrenamiento.json (que se
+    # sobreescribe en cada corrida), aqui se acumula cada corrida completada
+    # para poder comparar entrenamientos a traves del tiempo en el dashboard.
+    agregar_a_historial(resumen_corrida)
 
 
 if __name__ == "__main__":

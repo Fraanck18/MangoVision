@@ -14,7 +14,6 @@ def rutas_temporales(tmp_path):
     return {
         "buffer": tmp_path / "buffer_local",
         "staging": tmp_path / "staging",
-        "hdfs_local": tmp_path / "hdfs_simulado",
     }
 
 
@@ -55,7 +54,18 @@ def test_drenar_con_conexion_mueve_todo_a_staging(rutas_temporales):
     assert len(list(rutas_temporales["staging"].glob("*.jpg"))) == 2
 
 
-def test_subir_a_hdfs_particiona_por_lote_ingesta(rutas_temporales):
+def test_subir_a_hdfs_particiona_por_lote_ingesta(rutas_temporales, monkeypatch):
+    """
+    El upload real a HDFS (`hdfs_client.subir_archivo`) requiere un NameNode
+    vivo (docker-compose.hdfs.yml); se mockea aqui para probar el
+    particionado de rutas sin depender de un cluster levantado.
+    """
+    rutas_subidas = []
+    monkeypatch.setattr(
+        "src.ingestion.uploader_batch.subir_archivo",
+        lambda ruta_local, ruta_hdfs: rutas_subidas.append(ruta_hdfs),
+    )
+
     capturar_lectura(IMAGEN_FALSA, {"sensor_id": "camion-01"}, carpeta_buffer=rutas_temporales["buffer"])
     drenar_buffer_a_staging(
         carpeta_buffer=rutas_temporales["buffer"],
@@ -66,11 +76,11 @@ def test_subir_a_hdfs_particiona_por_lote_ingesta(rutas_temporales):
     resultado = subir_staging_a_hdfs(
         lote_ingesta="2026-06-26",
         carpeta_staging=rutas_temporales["staging"],
-        carpeta_hdfs_local=rutas_temporales["hdfs_local"],
+        carpeta_hdfs_raiz="/data-lake/mangos/raw",
     )
 
     assert resultado["lote_ingesta"] == "2026-06-26"
     assert len(resultado["subidas"]) == 1
-    carpeta_particion = rutas_temporales["hdfs_local"] / "lote_ingesta=2026-06-26"
-    assert carpeta_particion.exists()
-    assert len(list(carpeta_particion.glob("*.jpg"))) == 1
+    assert resultado["carpeta_destino"] == "/data-lake/mangos/raw/lote_ingesta=2026-06-26"
+    assert any(r.endswith(".jpg") for r in rutas_subidas)
+    assert any(r.endswith(".json") for r in rutas_subidas)
