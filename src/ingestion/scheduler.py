@@ -36,6 +36,7 @@ from src.config import (
     POOL_IMAGENES_SENSOR,
 )
 from src.ingestion.edge_buffer import capturar_lectura
+from src.ingestion.hdfs_client import leer_bytes, listar_archivos
 from src.ingestion.uploader_batch import drenar_buffer_a_staging, subir_staging_a_hdfs
 from src.streaming.kafka_cliente import publicar_evento_imagen
 
@@ -124,17 +125,28 @@ def _capturar_una(imagen_bytes, sensor_id, clase_real, aumentado):
 
 
 def _publicar_lote_a_kafka(carpeta_destino, lote_ingesta):
-    """Publica un evento por imagen aterrizada al topic Kafka (referencia + ground-truth)."""
-    carpeta = Path(carpeta_destino)
+    """
+    Publica un evento por imagen aterrizada al topic Kafka (referencia + ground-truth).
+
+    `carpeta_destino` es la ruta en HDFS (WebHDFS) donde el uploader dejo el
+    lote: las imagenes ya NO viven en disco local (se subieron y se borraron del
+    staging), por lo que la metadata se lee desde HDFS y el evento referencia la
+    ruta HDFS de la imagen (patron correcto: Kafka transporta el evento ligero,
+    la imagen vive en el Data Lake).
+    """
+    base = carpeta_destino.rstrip("/")
+    nombres_json = [n for n in listar_archivos(base) if n.endswith(".json")]
     publicados = 0
-    for ruta_json in sorted(carpeta.glob("*.json")):
-        ruta_imagen = ruta_json.with_suffix(".jpg")
-        if not ruta_imagen.exists():
+    for nombre_json in sorted(nombres_json):
+        nombre_imagen = nombre_json[: -len(".json")] + ".jpg"
+        try:
+            meta = json.loads(leer_bytes(f"{base}/{nombre_json}").decode("utf-8"))
+        except Exception:
+            logger.warning("Metadata ilegible en HDFS: %s/%s", base, nombre_json)
             continue
-        meta = json.loads(ruta_json.read_text(encoding="utf-8"))
         ok = publicar_evento_imagen({
             "id_lectura": meta.get("id_lectura"),
-            "ruta_imagen": str(ruta_imagen),
+            "ruta_imagen": f"{base}/{nombre_imagen}",
             "true_label": meta.get("clase_real_origen"),
             "aumentado": meta.get("aumentado"),
             "degradada": meta.get("degradada", False),

@@ -17,6 +17,7 @@ tambien, levanta una alerta (p.ej. condensacion en lente FLIR).
 El calculo pesado vive aqui (daemon en segundo plano), nunca en el dashboard:
 el frontend solo hace fetch del resultado ya calculado (endpoint /metricas/vivo).
 """
+import io
 import logging
 import sqlite3
 import threading
@@ -33,6 +34,7 @@ from src.config import (
     VENTANA_DESLIZANTE,
 )
 from src.inference.diagnostico import diagnosticar_imagen_pil
+from src.ingestion.hdfs_client import leer_bytes
 from src.streaming.kafka_cliente import crear_consumidor
 
 logger = logging.getLogger("mangovision.evaluador")
@@ -153,14 +155,23 @@ def calcular_metricas_vivo():
     return resultado
 
 
+def _cargar_imagen_evento(ruta):
+    """
+    Carga la imagen referenciada por un evento. Tras la migracion a HDFS real,
+    la ruta apunta al Data Lake (WebHDFS); se conserva el fallback a disco local
+    por compatibilidad con eventos antiguos del modo simulado.
+    """
+    local = Path(ruta)
+    if local.exists():
+        return Image.open(local).convert("RGB")
+    return Image.open(io.BytesIO(leer_bytes(ruta))).convert("RGB")
+
+
 def _evaluar_evento(evento, estado_modelo):
-    ruta = Path(evento["ruta_imagen"])
-    if not ruta.exists():
-        return
     try:
-        imagen = Image.open(ruta).convert("RGB")
+        imagen = _cargar_imagen_evento(evento["ruta_imagen"])
     except Exception:
-        logger.warning("Imagen ilegible en evento: %s", ruta)
+        logger.warning("Imagen ilegible en evento: %s", evento.get("ruta_imagen"))
         return
 
     diag = diagnosticar_imagen_pil(

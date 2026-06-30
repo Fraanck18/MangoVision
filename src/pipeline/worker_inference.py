@@ -49,6 +49,26 @@ def listar_lotes_pendientes():
     return [c for c in carpetas if c not in procesados]
 
 
+def listar_todos_los_lotes():
+    """
+    Todos los lotes lote_ingesta=* aterrizados en el Data Lake (HDFS real),
+    procesados o no, ordenados del mas reciente al mas antiguo. Sirve a la
+    galeria de imagenes para mostrar TODO lo que el sensor ha aterrizado,
+    no solo lo pendiente de inferencia.
+    """
+    procesados = _lotes_procesados()
+    carpetas = [c for c in listar_subcarpetas(HDFS_RAW_PATH_WEBHDFS) if c.startswith("lote_ingesta=")]
+    return [
+        {"nombre": c, "etiqueta": c.split("=", 1)[1], "procesado": c in procesados}
+        for c in sorted(carpetas, reverse=True)
+    ]
+
+
+def imagenes_de_lote(nombre_lote):
+    """Wrapper publico de `_imagenes_de_lote` para la galeria de imagenes."""
+    return _imagenes_de_lote(nombre_lote)
+
+
 def _imagenes_de_lote(nombre_lote):
     carpeta = f"{HDFS_RAW_PATH_WEBHDFS.rstrip('/')}/{nombre_lote}"
     nombres_json = {n for n in listar_archivos(carpeta) if n.endswith(".json")}

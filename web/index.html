@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ThermoMango — Panel de Análisis Térmico</title>
-<link rel="stylesheet" href="css/styles.css?v=5">
+<link rel="stylesheet" href="css/styles.css?v=6">
 <script>
   // Aplica el tema guardado ANTES de pintar, para evitar el parpadeo de tema claro -> oscuro/neon.
   // Si el usuario nunca elegio un tema, se respeta la preferencia del sistema operativo.
@@ -33,6 +33,7 @@
       <div class="nav-titulo">ANÁLISIS</div>
       <button class="nav-link activo" data-vista="dashboard"><span class="punto-nav"></span> Dashboard</button>
       <button class="nav-link" data-vista="mapa-termico"><span class="punto-nav"></span> Mapa Térmico</button>
+      <button class="nav-link" data-vista="galeria"><span class="punto-nav"></span> Imágenes Térmicas</button>
       <button class="nav-link"><span class="punto-nav"></span> Clasificador IA</button>
       <button class="nav-link" data-vista="vista3d"><span class="punto-nav"></span> Vista 3D</button>
     </nav>
@@ -244,6 +245,52 @@
 
     </div><!-- /vista-mapa-termico -->
 
+    <!-- ==================== GALERÍA DE IMÁGENES TÉRMICAS ==================== -->
+    <div id="vista-galeria" class="oculto">
+
+      <section class="panel">
+        <div class="panel-titulo">
+          <h2>🖼 Imágenes Térmicas Recibidas</h2>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span id="gal-ultima-act" class="holo-hint">Última actualización: —</span>
+            <button id="btn-gal-actualizar" class="boton boton-primario">↻ Actualizar</button>
+          </div>
+        </div>
+        <p class="holo-hint" style="margin:0 0 14px;">
+          Cada imagen que el sensor FLIR del camión aterriza en el Data Lake (HDFS), tal cual llega — sin
+          visualización 3D ni aumentada. Útil para <strong>verificar que las imágenes realmente están llegando</strong>
+          y revisar su calidad antes de la inferencia.
+        </p>
+
+        <div class="gal-filtros">
+          <div class="segmentado" id="gal-filtro-tipo">
+            <button class="activo" data-filtro="todos">Todas</button>
+            <button data-filtro="original">Originales</button>
+            <button data-filtro="horizontal_flip">Espejadas</button>
+            <button data-filtro="degradadas">Degradadas</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="gal-layout">
+        <!-- Columna izquierda: lotes recibidos -->
+        <div class="panel" style="margin:0;">
+          <div class="panel-titulo"><h2>📦 Lotes en el Data Lake</h2></div>
+          <div id="gal-lista-lotes" class="gal-lista-lotes"></div>
+        </div>
+
+        <!-- Columna derecha: imágenes del lote seleccionado -->
+        <div class="panel" style="margin:0;">
+          <div class="panel-titulo">
+            <h2 id="gal-titulo-grid">🌡 Imágenes del lote</h2>
+            <span id="gal-conteo" class="estado-pill sin_iniciar">—</span>
+          </div>
+          <div id="gal-grid" class="gal-grid"></div>
+        </div>
+      </div>
+
+    </div><!-- /vista-galeria -->
+
     <div id="vista-3d" class="oculto">
       <section class="panel">
         <div class="panel-titulo">
@@ -320,6 +367,14 @@
 
 <div id="toast" class="toast oculto"></div>
 
+<div id="gal-lightbox" class="gal-lightbox oculto" role="dialog" aria-modal="true">
+  <button type="button" id="gal-lightbox-cerrar" class="gal-lightbox-cerrar" aria-label="Cerrar">✕</button>
+  <figure class="gal-lightbox-figura">
+    <img id="gal-lightbox-img" src="" alt="Imagen térmica">
+    <figcaption id="gal-lightbox-caption"></figcaption>
+  </figure>
+</div>
+
 <div id="drawer-overlay" class="drawer-overlay oculto"></div>
 <aside id="drawer" class="drawer oculto" role="dialog" aria-modal="true" aria-labelledby="drawer-titulo">
   <div class="drawer-header">
@@ -335,6 +390,7 @@
 <script src="js/chartsRenderer.js?v=2"></script>
 <script src="js/uiRenderer.js?v=2"></script>
 <script src="js/mapaTermicoRenderer.js?v=2"></script>
+<script src="js/galeriaImagenesRenderer.js?v=1"></script>
 <script src="js/main.js?v=3"></script>
 </body>
 </html>

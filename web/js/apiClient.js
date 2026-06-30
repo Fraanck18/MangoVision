@@ -94,6 +94,26 @@ async function consultarMetricasVivo() {
   return respuesta.json();
 }
 
+async function consultarLotesImagenes() {
+  const respuesta = await fetch(`${API_BASE}/imagenes/lotes`);
+  if (!respuesta.ok) throw new Error(`/imagenes/lotes respondio HTTP ${respuesta.status}`);
+  return respuesta.json();
+}
+
+async function consultarImagenesDeLote(nombreLote) {
+  const respuesta = await fetch(`${API_BASE}/imagenes/lote/${encodeURIComponent(nombreLote)}`);
+  if (!respuesta.ok) {
+    const detalle = await respuesta.json().catch(() => ({}));
+    throw new Error(detalle.detail || `/imagenes/lote respondio HTTP ${respuesta.status}`);
+  }
+  return respuesta.json();
+}
+
+/** Convierte la URL relativa que entrega el backend en una URL absoluta servible por <img>. */
+function urlImagenLote(rutaRelativa) {
+  return `${API_BASE}${rutaRelativa}`;
+}
+
 async function simularFalloSensor(lotes = 3) {
   const respuesta = await fetch(`${API_BASE}/simular/fallo-sensor?lotes=${lotes}`, { method: "POST" });
   if (!respuesta.ok) throw new Error(`/simular/fallo-sensor respondio HTTP ${respuesta.status}`);

@@ -85,10 +85,11 @@ function renderTodo() {
  * con id correspondiente. La Vista 3D se inicializa de forma perezosa.
  */
 function navegarVista(vista) {
-  const vistas = ["vista-dashboard", "vista-mapa-termico", "vista-3d"];
+  const vistas = ["vista-dashboard", "vista-mapa-termico", "vista-galeria", "vista-3d"];
   const mapaVista = {
     "dashboard": "vista-dashboard",
     "mapa-termico": "vista-mapa-termico",
+    "galeria": "vista-galeria",
     "vista3d": "vista-3d",
   };
   const idActiva = mapaVista[vista] || "vista-dashboard";
@@ -108,6 +109,9 @@ function navegarVista(vista) {
   }
   if (vista === "mapa-termico") {
     renderMapaTermico();
+  }
+  if (vista === "galeria") {
+    window.renderGaleria?.();
   }
 }
 

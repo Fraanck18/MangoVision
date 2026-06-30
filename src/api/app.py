@@ -20,12 +20,13 @@ from pathlib import Path
 import torch
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from PIL import Image
 from pydantic import BaseModel
 
 from src.config import (
     HDFS_NAMENODE,
+    HDFS_RAW_PATH_WEBHDFS,
     INTERVALO_INGESTA_SEGUNDOS,
     MLFLOW_MODEL_NAME,
     MLFLOW_MODEL_STAGE,
@@ -33,6 +34,7 @@ from src.config import (
     PREFERENCIAS_USUARIO_PATH,
 )
 from src.inference.diagnostico import diagnosticar_imagen_pil
+from src.ingestion.hdfs_client import leer_bytes
 from src.ingestion.scheduler import activar_fallo_sensor, iniciar_scheduler_ingesta
 from src.models.resnet50_custom import (
     ResNet50MangoQC,
@@ -40,7 +42,12 @@ from src.models.resnet50_custom import (
     obtener_transformaciones_validacion,
 )
 from src.pipeline.historial_entrenamiento import agregar_a_historial, escribir_estado, leer_estado, leer_historial
-from src.pipeline.worker_inference import analizar_lotes_pendientes, listar_lotes_pendientes
+from src.pipeline.worker_inference import (
+    analizar_lotes_pendientes,
+    imagenes_de_lote,
+    listar_lotes_pendientes,
+    listar_todos_los_lotes,
+)
 from src.streaming.evaluador_online import calcular_metricas_vivo, iniciar_evaluador_online
 
 logger = logging.getLogger("mangovision.api")
@@ -292,6 +299,74 @@ def analizar_lotes():
     return analizar_lotes_pendientes(
         estado_modelo["modelo"], estado_modelo["device"], estado_modelo["preprocess"]
     )
+
+
+@app.get("/imagenes/lotes")
+def imagenes_lotes():
+    """
+    Galeria: todos los lotes de imagenes termicas que el sensor del camion ha
+    aterrizado en el Data Lake (HDFS real), procesados o no. Permite VERIFICAR
+    visualmente que las imagenes estan llegando de verdad, mas alla de la
+    inferencia. Para cada lote devuelve cuantas imagenes contiene.
+    """
+    lotes = listar_todos_los_lotes()
+    salida = []
+    for lote in lotes:
+        try:
+            imagenes = imagenes_de_lote(lote["nombre"])
+        except Exception:
+            logger.warning("No se pudo leer el lote %s del Data Lake.", lote["nombre"])
+            imagenes = []
+        salida.append({**lote, "total_imagenes": len(imagenes)})
+    return {"lotes": salida, "total_lotes": len(salida)}
+
+
+@app.get("/imagenes/lote/{nombre_lote}")
+def imagenes_de_un_lote(nombre_lote: str):
+    """
+    Listado de imagenes de un lote concreto con su metadata (sensor, clase real
+    de origen, si es original o espejada, si llego degradada). Cada item incluye
+    la URL de `/imagenes/archivo` para descargar el JPEG real desde HDFS.
+    """
+    if not nombre_lote.startswith("lote_ingesta="):
+        raise HTTPException(status_code=400, detail="Nombre de lote invalido.")
+    try:
+        items = imagenes_de_lote(nombre_lote)
+    except Exception:
+        raise HTTPException(status_code=502, detail="No se pudo leer el lote desde el Data Lake (HDFS).")
+
+    imagenes = []
+    for item in items:
+        meta = item["metadata"]
+        imagenes.append({
+            "ruta_imagen_hdfs": item["ruta_imagen_hdfs"],
+            "url": f"/imagenes/archivo?ruta={item['ruta_imagen_hdfs']}",
+            "nombre_archivo": item["ruta_imagen_hdfs"].rsplit("/", 1)[-1],
+            "sensor_id": meta.get("sensor_id"),
+            "clase_real_origen": meta.get("clase_real_origen"),
+            "aumentado": meta.get("aumentado", "original"),
+            "degradada": bool(meta.get("degradada", False)),
+            "timestamp_captura_utc": meta.get("timestamp_captura_utc"),
+        })
+    return {"lote": nombre_lote, "total_imagenes": len(imagenes), "imagenes": imagenes}
+
+
+@app.get("/imagenes/archivo")
+def servir_imagen(ruta: str):
+    """
+    Sirve los bytes reales de una imagen termica almacenada en HDFS. Se
+    restringe la ruta al arbol raw del Data Lake (defensa contra path
+    traversal): nunca se lee nada fuera de HDFS_RAW_PATH_WEBHDFS.
+    """
+    prefijo = HDFS_RAW_PATH_WEBHDFS.rstrip("/")
+    if ".." in ruta or not ruta.startswith(prefijo) or not ruta.lower().endswith((".jpg", ".jpeg", ".png")):
+        raise HTTPException(status_code=400, detail="Ruta de imagen no permitida.")
+    try:
+        contenido = leer_bytes(ruta)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Imagen no encontrada en el Data Lake.")
+    media = "image/png" if ruta.lower().endswith(".png") else "image/jpeg"
+    return Response(content=contenido, media_type=media, headers={"Cache-Control": "max-age=3600"})
 
 
 @app.get("/metricas/vivo")

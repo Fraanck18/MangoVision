@@ -135,53 +135,107 @@ def _degradar_ruido_sensor(imagen_pil, rng):
     return Image.fromarray(arreglo, mode="RGB")
 
 
+def _campo_suave(n, rng, escala_px, amplitud):
+    """
+    Campo de ruido de baja frecuencia (coherente espacialmente), no granular:
+    ruido blanco normalizado y suavizado con desenfoque gaussiano. Sirve para
+    el moteado realista de la superficie del fruto y para deformar la silueta,
+    en vez del chispeado pixel-a-pixel que daba el aspecto de "estatica".
+    """
+    base = rng.normal(0.0, 1.0, (n, n)).astype(np.float32)
+    rango = float(base.max() - base.min()) or 1.0
+    img = Image.fromarray((((base - base.min()) / rango) * 255).astype(np.uint8))
+    img = img.filter(ImageFilter.GaussianBlur(radius=escala_px))
+    arr = np.asarray(img, dtype=np.float32)
+    arr = (arr - arr.mean()) / (arr.std() + 1e-6)
+    return arr * amplitud
+
+
 def generar_imagen(clase, rng):
-    """Genera una imagen termica sintetica (PIL.Image RGB) de la clase indicada."""
+    """
+    Genera una imagen termica sintetica (PIL.Image RGB) de la clase indicada,
+    con aspecto de termografia real de mango: silueta ovoide-arrinonada (no un
+    circulo perfecto), borde DIFUSO con halo termico (la camara FLIR tiene
+    resolucion espacial limitada y el calor "sangra" al entorno), moteado de
+    superficie de baja frecuencia y enfriamiento del reborde por angulo de
+    vision/emisividad. La FIRMA TERMICA por clase (rango de temperatura ->
+    matiz dominante en la paleta Ironbow) se conserva intacta para no alterar
+    la señal que aprende el clasificador.
+    """
     n = IMAGE_SIZE
-
-    # --- Fondo ambiente frio con gradiente suave (como el fondo azul real) ---
-    t_amb = rng.uniform(11.0, 15.0)
-    grad = np.linspace(rng.uniform(-2.0, 0.0), rng.uniform(0.0, 3.0), n)
-    temp = t_amb + grad[None, :] + rng.normal(0.0, 0.6, (n, n))
-
-    # --- Fruto: elipse aleatoria (posicion, tamano y rotacion variables) ---
-    cx, cy = rng.uniform(0.40, 0.60) * n, rng.uniform(0.40, 0.60) * n
-    ax, ay = rng.uniform(0.28, 0.40) * n, rng.uniform(0.24, 0.36) * n
-    angulo = rng.uniform(-0.4, 0.4)
-
     yy, xx = np.mgrid[0:n, 0:n]
+
+    # --- Fondo ambiente frio: gradiente suave + leve vignette en las esquinas
+    # (las escenas termicas reales no son un azul plano perfecto) ---
+    t_amb = rng.uniform(11.0, 14.5)
+    grad = np.linspace(rng.uniform(-1.5, 0.0), rng.uniform(0.0, 2.5), n)
+    dist_centro = np.sqrt(((xx - n / 2) / (n / 2)) ** 2 + ((yy - n / 2) / (n / 2)) ** 2)
+    vignette = -1.6 * np.clip(dist_centro - 0.6, 0.0, None)
+    temp = t_amb + grad[None, :] + vignette + _campo_suave(n, rng, escala_px=18.0, amplitud=0.5)
+
+    # --- Fruto: elipse deformada angularmente -> contorno de mango (ovoide con
+    # un extremo algo mas afilado), posicion/tamano/rotacion variables ---
+    cx, cy = rng.uniform(0.42, 0.58) * n, rng.uniform(0.42, 0.58) * n
+    ax, ay = rng.uniform(0.30, 0.40) * n, rng.uniform(0.24, 0.34) * n
+    angulo = rng.uniform(-0.5, 0.5)
+
     xr = (xx - cx) * np.cos(angulo) + (yy - cy) * np.sin(angulo)
     yr = -(xx - cx) * np.sin(angulo) + (yy - cy) * np.cos(angulo)
-    r = np.sqrt((xr / ax) ** 2 + (yr / ay) ** 2)  # 0 centro -> 1 borde
-    mascara = r <= 1.0
+    theta = np.arctan2(yr, xr)
+    ph1, ph2 = rng.uniform(0, 2 * np.pi), rng.uniform(0, 2 * np.pi)
+    # Deformacion del radio del contorno: lobulo principal (asimetria tipo
+    # "pico" del mango) + ondulacion suave. >1 ensancha, <1 estrecha.
+    deform = (1.0
+              + 0.16 * np.sin(theta + ph1)
+              + 0.07 * np.sin(2 * theta + ph2)
+              + 0.04 * np.sin(3 * theta))
+    r = np.sqrt((xr / ax) ** 2 + (yr / ay) ** 2) / deform  # 0 centro -> 1 borde
+
+    # Membresia difusa del fruto (borde suave, no recorte duro) + halo termico
+    # justo por fuera del contorno.
+    borde = 0.07
+    w = 1.0 / (1.0 + np.exp((r - 1.0) / borde))               # ~1 dentro, ~0 fuera
+    halo = np.exp(-(np.clip(r - 1.0, 0.0, None) ** 2) / (2 * 0.16 ** 2))
 
     if clase == "calidad_promedio":      # Verde / Inmaduro: frio y homogeneo
         base = rng.uniform(15.0, 21.0)
-        perfil = base - 1.0 * r
-        ruido = rng.normal(0.0, 0.4, (n, n))
+        perfil = base - 1.2 * (r ** 2)
+        textura = _campo_suave(n, rng, escala_px=14.0, amplitud=0.35)
+        halo_temp = 1.5
     elif clase == "alta_calidad":        # Maduro / Optimo: gradiente radial moderado
         base = rng.uniform(24.0, 31.0)
-        perfil = base - 4.0 * (r ** 2)
-        ruido = rng.normal(0.0, 0.8, (n, n))
+        perfil = base - 4.5 * (r ** 2)
+        textura = _campo_suave(n, rng, escala_px=11.0, amplitud=0.9)
+        halo_temp = 2.6
     elif clase == "defectuoso":          # Sobre-maduro: caliente + puntos calientes
         base = rng.uniform(34.0, 41.0)
-        perfil = base - 3.0 * (r ** 2)
-        ruido = rng.normal(0.0, 1.2, (n, n))
+        perfil = base - 3.2 * (r ** 2)
+        textura = _campo_suave(n, rng, escala_px=9.0, amplitud=1.4)
+        halo_temp = 3.6
         for _ in range(int(rng.integers(2, 5))):
-            hx = cx + rng.uniform(-0.6, 0.6) * ax
-            hy = cy + rng.uniform(-0.6, 0.6) * ay
-            sigma = rng.uniform(6.0, 14.0)
-            perfil = perfil + rng.uniform(3.0, 7.0) * np.exp(
+            hx = cx + rng.uniform(-0.55, 0.55) * ax
+            hy = cy + rng.uniform(-0.55, 0.55) * ay
+            sigma = rng.uniform(7.0, 15.0)
+            perfil = perfil + rng.uniform(3.5, 7.0) * np.exp(
                 -(((xx - hx) ** 2 + (yy - hy) ** 2) / (2 * sigma ** 2))
             )
     else:
         raise ValueError(f"Clase desconocida: {clase}")
 
-    temp = np.where(mascara, perfil + ruido, temp)
+    # Reborde mas frio (angulo de vision rasante / menor emisividad en el canto).
+    rim = np.exp(-((1.0 - r) / 0.14) ** 2)
+    temp_fruto = perfil + textura - rim * rng.uniform(1.0, 2.2)
 
-    # --- Ruido impulsivo del sensor (chispeado blanco, ~1% de pixeles) ---
-    sal = rng.random((n, n)) < 0.01
-    temp[sal] = T_MAX_PALETA
+    # Composicion: fondo (+ halo termico por fuera) fundido con el fruto segun
+    # la membresia difusa. El halo solo pesa donde w es bajo (justo fuera).
+    temp_fondo = temp + halo * halo_temp * (1.0 - w)
+    temp = temp_fondo * (1.0 - w) + temp_fruto * w
+
+    # Ruido de sensor fino y disperso (mucho mas leve que antes: ya no es el
+    # chispeado que daba aspecto de estatica). Puntos calientes aislados raros.
+    temp += rng.normal(0.0, 0.35, (n, n))
+    sal = rng.random((n, n)) < 0.0015
+    temp[sal] = np.minimum(temp[sal] + rng.uniform(6.0, 12.0), T_MAX_PALETA)
 
     rel = (temp - T_MIN_PALETA) / (T_MAX_PALETA - T_MIN_PALETA)
     return Image.fromarray(mapa_a_ironbow(rel), mode="RGB")
