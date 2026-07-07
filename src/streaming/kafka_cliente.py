@@ -2,9 +2,10 @@
 Capa de streaming sobre Kafka real (KRaft, en Docker).
 
 Productor y consumidor del topic de imagenes termicas. Cada mensaje es un
-EVENTO que referencia la imagen ya aterrizada en el Data Lake (HDFS simulado)
-y lleva su ground-truth -- patron industrial correcto: Kafka transporta el
-evento ligero, no el blob pesado; la imagen vive en el lake. Esto desacopla
+EVENTO que referencia la imagen ya aterrizada en el Data Lake HDFS REAL
+(NameNode+DataNode de docker-compose.hdfs.yml, verificado E2E) y lleva su
+ground-truth -- patron industrial correcto: Kafka transporta el evento ligero,
+no el blob pesado; la imagen vive en el lake. Esto desacopla
 productor (sensor del camion) de consumidor (evaluador online), de modo que el
 broker es intercambiable sin tocar la logica de negocio.
 

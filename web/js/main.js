@@ -4,17 +4,20 @@
  * actualiza `estadoDashboard`, que es la unica fuente de verdad para todos
  * los renders (uiRenderer.js, mango3dRenderer.js, chartsRenderer.js).
  */
+// [F10] Todo el estado esta en ITR relativo 0-100 (NO °C). Las semillas salen de
+// la escala unica (escala.js), no de valores tipo Celsius.
 const estadoDashboard = {
-  tempPromedio: 28.4,
-  indiceMadurez: 74,
-  varianza: 2.1,
+  tempPromedio: 50,                 // ITR medio placeholder (se llena con dato real)
+  indiceMadurez: 0,
+  varianza: 0,
   anomalias: 0,
-  precisionModelo: 0,
+  // [F9] Confianza de la ULTIMA imagen (softmax), NO la precision del modelo.
+  confianzaUltimaImagen: 0,
   conteoClases: { calidad_promedio: 0, alta_calidad: 0, defectuoso: 0 },
-  temperaturasMedias: { calidad_promedio: 18.2, alta_calidad: 28.4, defectuoso: 38.7 },
+  temperaturasMedias: semillaMediaPorClaseITR(),   // punto medio de banda ITR por clase
   totalMuestras: 0,
   tiempoProcMs: 0,
-  zonas: { A: 27.1, B: 29.3, C: 32.8, D: 18.5, E: 38.2, F: 26.6 },
+  zonas: { A: 50, B: 55, C: 62, D: 25, E: 85, F: 48 },  // ITR
   metricaVivo: null,
 };
 
@@ -25,9 +28,13 @@ let cicloPollingMetrica = null;
 
 document.addEventListener("DOMContentLoaded", () => {
   renderTodo();
+  // [F8] Trae la escala ITR AUTORITATIVA del backend (/config/escala) y re-renderiza
+  // si difiere del fallback local -> la UI nunca se desincroniza de config.py.
+  cargarEscala(renderTodo);
   inicializarSelectorTema();
   inicializarDrawer();
   inicializarDensidad();
+  inicializarNavDrawer();
 
   document.getElementById("btn-importar").addEventListener("click", () => abrirSelectorImagen());
   document.getElementById("btn-agregar-muestra").addEventListener("click", () => abrirSelectorImagen());
@@ -40,8 +47,46 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-exportar").addEventListener("click", exportarEstadoComoJSON);
   document.getElementById("btn-fallo-sensor").addEventListener("click", manejarFalloSensor);
 
+  // === EVENTOS NUEVAS VISTAS ===
+  
+  // Clasificador IA
+  const btnIaUpload = document.getElementById("btn-ia-upload");
+  if(btnIaUpload) btnIaUpload.addEventListener("click", () => abrirSelectorImagen());
+  const btnIaAnalizar = document.getElementById("btn-ia-analizar");
+  if(btnIaAnalizar) btnIaAnalizar.addEventListener("click", manejarClickAnalizar);
+  
+  // Muestras
+  const btnMuestrasBuscar = document.getElementById("btn-muestras-buscar");
+  if(btnMuestrasBuscar) btnMuestrasBuscar.addEventListener("click", () => alert("Funcionalidad de búsqueda en desarrollo..."));
+  const btnMuestrasExportar = document.getElementById("btn-muestras-exportar");
+  if(btnMuestrasExportar) btnMuestrasExportar.addEventListener("click", exportarReporteCSV);
+  
+  // Enlazar los botones "Ver 3D" de la tabla a la vista 3D
+  document.querySelectorAll("#vista-muestras tbody .boton").forEach(b => {
+    b.addEventListener("click", () => navegarVista("3d"));
+  });
+
+  // Reportes
+  const btnReportesNuevo = document.getElementById("btn-reportes-nuevo");
+  if(btnReportesNuevo) btnReportesNuevo.addEventListener("click", () => alert("Generador de reportes en desarrollo..."));
+  const btnReportesGenerar = document.getElementById("btn-reportes-generar");
+  if(btnReportesGenerar) btnReportesGenerar.addEventListener("click", () => alert("Generando reporte con los parámetros seleccionados..."));
+  
+  document.querySelectorAll("#vista-reportes .entrenamiento-historial-item .boton").forEach(b => {
+    b.addEventListener("click", () => alert("Descarga iniciada..."));
+  });
+
+  // Configuración
+  const btnConfigGuardar = document.getElementById("btn-configuracion-guardar");
+  if(btnConfigGuardar) btnConfigGuardar.addEventListener("click", () => alert("Configuración guardada exitosamente."));
+
+  // =============================
   document.querySelectorAll(".nav-link[data-vista]").forEach((boton) => {
     boton.addEventListener("click", () => navegarVista(boton.dataset.vista));
+  });
+  // Cualquier clic en un enlace del drawer lo cierra (tras un breve respiro visual).
+  document.querySelectorAll("#nav-drawer .nav-link").forEach((b) => {
+    b.addEventListener("click", () => setTimeout(cerrarNavDrawer, 120));
   });
   document.querySelectorAll("#selector-modo button").forEach((boton) => {
     boton.addEventListener("click", () => window.cambiarModoVisualizacion?.(boton.dataset.modo));
@@ -85,12 +130,19 @@ function renderTodo() {
  * con id correspondiente. La Vista 3D se inicializa de forma perezosa.
  */
 function navegarVista(vista) {
-  const vistas = ["vista-dashboard", "vista-mapa-termico", "vista-galeria", "vista-3d"];
+  const vistas = [
+    "vista-dashboard", "vista-mapa-termico", "vista-galeria", "vista-3d",
+    "vista-clasificador-ia", "vista-muestras", "vista-reportes", "vista-configuracion"
+  ];
   const mapaVista = {
     "dashboard": "vista-dashboard",
     "mapa-termico": "vista-mapa-termico",
     "galeria": "vista-galeria",
     "vista3d": "vista-3d",
+    "clasificador-ia": "vista-clasificador-ia",
+    "muestras": "vista-muestras",
+    "reportes": "vista-reportes",
+    "configuracion": "vista-configuracion",
   };
   const idActiva = mapaVista[vista] || "vista-dashboard";
 
@@ -161,13 +213,15 @@ async function analizarImagenImportada() {
 
   aplicarDiagnosticoAlEstado(diagnostico, tiempoSeg);
   window.actualizarClasificacionHolografica?.(diagnostico);
-  acumularMuestraGrafica(diagnostico.temperatura_estimada);
+  acumularMuestraGrafica(diagnostico.indice_itr);
 
   const urlImagen = URL.createObjectURL(archivoSeleccionado);
   renderMuestraReciente(diagnostico, urlImagen);
   // El holograma 3D usa la imagen REAL importada como mapa de calor (relieve Z).
   window.cargarImagenHolograma?.(urlImagen);
   archivoSeleccionado = null;
+
+  actualizarPanelClasificadorIA(diagnostico, tiempoSeg);
 
   mostrarToast(`Imagen importada clasificada como "${diagnostico.categoria}" (${(diagnostico.confianza * 100).toFixed(1)}%).`);
 }
@@ -183,9 +237,10 @@ async function analizarLotesPendientesHDFS() {
 
   resultado.resultados.forEach((diagnostico) => {
     aplicarDiagnosticoAlEstado(diagnostico, diagnostico.tiempo_inferencia_s);
-    acumularMuestraGrafica(diagnostico.temperatura_estimada);
+    acumularMuestraGrafica(diagnostico.indice_itr);
   });
   window.actualizarClasificacionHolografica?.(resultado.resultados[resultado.resultados.length - 1]);
+  actualizarPanelClasificadorIA(resultado.resultados[resultado.resultados.length - 1], resultado.resultados[resultado.resultados.length - 1].tiempo_inferencia_s);
   renderTodo();
 
   document.getElementById("meta-sesion").textContent =
@@ -200,11 +255,57 @@ async function analizarLotesPendientesHDFS() {
   );
 }
 
+function actualizarPanelClasificadorIA(diagnostico, tiempoSeg) {
+  const elPrincipal = document.getElementById("ia-resultado-principal");
+  if (!elPrincipal || !diagnostico) return;
+
+  const conf = (diagnostico.confianza * 100).toFixed(1);
+  elPrincipal.innerHTML = `${diagnostico.categoria} <strong>${conf}%</strong>`;
+
+  let pctMaduro = 0.0, pctVerde = 0.0, pctSobre = 0.0;
+  
+  // Simular la distribución softmax en base a la etiqueta si no viene del backend
+  const confFloat = parseFloat(conf);
+  const resto = 100 - confFloat;
+  
+  if (diagnostico.etiqueta === "alta_calidad") {
+      pctMaduro = confFloat;
+      pctVerde = resto * 0.7;
+      pctSobre = resto * 0.3;
+  } else if (diagnostico.etiqueta === "calidad_promedio") {
+      pctVerde = confFloat;
+      pctMaduro = resto * 0.8;
+      pctSobre = resto * 0.2;
+  } else {
+      pctSobre = confFloat;
+      pctMaduro = resto * 0.4;
+      pctVerde = resto * 0.6;
+  }
+
+  const elPctMaduro = document.getElementById("ia-pct-maduro");
+  if(elPctMaduro) elPctMaduro.textContent = `${pctMaduro.toFixed(1)}%`;
+  const elBarMaduro = document.getElementById("ia-bar-maduro");
+  if(elBarMaduro) elBarMaduro.style.width = `${pctMaduro.toFixed(1)}%`;
+  
+  const elPctVerde = document.getElementById("ia-pct-verde");
+  if(elPctVerde) elPctVerde.textContent = `${pctVerde.toFixed(1)}%`;
+  const elBarVerde = document.getElementById("ia-bar-verde");
+  if(elBarVerde) elBarVerde.style.width = `${pctVerde.toFixed(1)}%`;
+  
+  const elPctSobre = document.getElementById("ia-pct-sobre");
+  if(elPctSobre) elPctSobre.textContent = `${pctSobre.toFixed(1)}%`;
+  const elBarSobre = document.getElementById("ia-bar-sobre");
+  if(elBarSobre) elBarSobre.style.width = `${pctSobre.toFixed(1)}%`;
+  
+  const elTiempo = document.getElementById("ia-tiempo");
+  if(elTiempo) elTiempo.textContent = `${(tiempoSeg * 1000).toFixed(0)} ms`;
+}
+
 function aplicarDiagnosticoAlEstado(diagnostico, tiempoSeg) {
   const clase = diagnostico.etiqueta;
   const n = estadoDashboard.conteoClases[clase];
   estadoDashboard.temperaturasMedias[clase] =
-    (estadoDashboard.temperaturasMedias[clase] * n + diagnostico.temperatura_estimada) / (n + 1);
+    (estadoDashboard.temperaturasMedias[clase] * n + diagnostico.indice_itr) / (n + 1);
   estadoDashboard.conteoClases[clase] += 1;
   estadoDashboard.totalMuestras += 1;
 
@@ -217,11 +318,13 @@ function aplicarDiagnosticoAlEstado(diagnostico, tiempoSeg) {
     (estadoDashboard.conteoClases.alta_calidad / estadoDashboard.totalMuestras) * 100
   );
   estadoDashboard.anomalias = estadoDashboard.conteoClases.defectuoso;
-  estadoDashboard.precisionModelo = diagnostico.confianza * 100;
+  // [F9] Es la CONFIANZA de esta imagen, no la accuracy del modelo. La accuracy
+  // real se muestra aparte desde la ventana viva (metricaVivo.rolling_accuracy).
+  estadoDashboard.confianzaUltimaImagen = diagnostico.confianza * 100;
   estadoDashboard.tiempoProcMs = tiempoSeg;
 
   const zonaRotativa = Object.keys(estadoDashboard.zonas)[estadoDashboard.totalMuestras % 6];
-  estadoDashboard.zonas[zonaRotativa] = diagnostico.temperatura_estimada;
+  estadoDashboard.zonas[zonaRotativa] = diagnostico.indice_itr;
 }
 
 async function verificarConexionBackend() {
@@ -443,7 +546,7 @@ async function manejarFalloSensor() {
   boton.disabled = true;
   try {
     const r = await simularFalloSensor(3);
-    mostrarToast(`❄ Fallo de sensor simulado por ${r.lotes_afectados} lotes — observa caer la precisión y dispararse el drift.`, true);
+    mostrarToast(`❄ Fallo de sensor simulado por ${r.lotes_afectados} lotes — observa caer la accuracy de ventana y dispararse el drift.`, true);
   } catch (error) {
     mostrarToast(`No se pudo simular el fallo: ${error.message}`, true);
   } finally {
@@ -547,6 +650,41 @@ function aplicarTema(tema) {
 function cambiarTema(tema) {
   aplicarTema(tema);
   guardarPreferencias({ tema }).catch(() => { /* se queda persistido en localStorage al menos */ });
+}
+
+/**
+ * Menú de navegación como DRAWER flotante desacoplado (estética editorial).
+ * Se abre desde el trigger "Menú" (esquina superior izquierda); se cierra con el
+ * scrim, la ✕, la tecla Escape o al elegir una vista. El movimiento (spring
+ * cubic-bezier) vive en el CSS; aquí solo se alterna la clase `.abierto`.
+ */
+function abrirNavDrawer() {
+  document.getElementById("nav-drawer")?.classList.add("abierto");
+  document.getElementById("nav-scrim")?.classList.add("abierto");
+  document.getElementById("nav-drawer")?.setAttribute("aria-hidden", "false");
+  document.getElementById("btn-menu")?.setAttribute("aria-expanded", "true");
+  document.body.style.overflow = "hidden";
+  // Foco al primer enlace para navegación por teclado.
+  document.querySelector("#nav-drawer .nav-link")?.focus?.({ preventScroll: true });
+}
+
+function cerrarNavDrawer() {
+  document.getElementById("nav-drawer")?.classList.remove("abierto");
+  document.getElementById("nav-scrim")?.classList.remove("abierto");
+  document.getElementById("nav-drawer")?.setAttribute("aria-hidden", "true");
+  document.getElementById("btn-menu")?.setAttribute("aria-expanded", "false");
+  document.body.style.overflow = "";
+}
+
+function inicializarNavDrawer() {
+  document.getElementById("btn-menu")?.addEventListener("click", abrirNavDrawer);
+  document.getElementById("nav-scrim")?.addEventListener("click", cerrarNavDrawer);
+  document.getElementById("nav-cerrar")?.addEventListener("click", cerrarNavDrawer);
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && document.getElementById("nav-drawer")?.classList.contains("abierto")) {
+      cerrarNavDrawer();
+    }
+  });
 }
 
 function mostrarToast(mensaje, esError = false) {

@@ -25,13 +25,15 @@
 import * as THREE from "three";
 import { OrbitControls } from "./../vendor/OrbitControls.js";
 
+// [F10] Rangos en ITR relativo 0-100 (NO °C). Coinciden con las bandas de la
+// escala unica (escala.js / MATURITY_INFO). El backend no mide grados Celsius.
 const ESTADOS = {
-  calidad_promedio: { nombre: "Verde / Inmaduro", color: 0x2f6fed, perfil: "verde", rango: "15–21 °C",
-    desc: "Temperatura baja y firma térmica homogénea: metabolismo bajo, sin actividad de maduración significativa." },
-  alta_calidad:     { nombre: "Maduro / Óptimo",  color: 0x16a34a, perfil: "maduro", rango: "22–32 °C",
-    desc: "Gradiente radial moderado con centro más cálido: metabolismo activo, punto óptimo de consumo." },
-  defectuoso:       { nombre: "Sobre-Maduro",     color: 0xdc2626, perfil: "sobremaduro", rango: "33–42 °C",
-    desc: "Hot-spots locales de alta temperatura: descomposición tisular, anomalías térmicas detectadas." },
+  calidad_promedio: { nombre: "Verde / Inmaduro", color: 0x2f6fed, perfil: "verde", rango: "ITR 15–35",
+    desc: "Firma térmica baja y homogénea: intensidad relativa baja, sin actividad de maduración significativa." },
+  alta_calidad:     { nombre: "Maduro / Óptimo",  color: 0x16a34a, perfil: "maduro", rango: "ITR 40–70",
+    desc: "Gradiente radial moderado con centro de mayor intensidad relativa: punto óptimo de consumo." },
+  defectuoso:       { nombre: "Sobre-Maduro",     color: 0xdc2626, perfil: "sobremaduro", rango: "ITR 75–100",
+    desc: "Hot-spots locales de alta intensidad relativa: anomalías térmicas detectadas." },
 };
 
 // Paleta Ironbow (igual que src/domain_physics/thermal_inertia.py): frio -> caliente.

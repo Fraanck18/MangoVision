@@ -44,13 +44,15 @@ MLFLOW_EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "mango-thermal-qc")
 CLASS_NAMES = ["alta_calidad", "calidad_promedio", "defectuoso"]
 NUM_CLASSES = len(CLASS_NAMES)
 
-# Mapeo de cada clase del clasificador (entrenado sobre dataset_mangos/processed)
-# a la lectura de madurez termica mostrada en el dashboard. El modelo no mide
-# temperatura directamente: el rango traduce su salida a una magnitud legible.
+# Mapeo de cada clase del clasificador a una lectura legible para el dashboard.
+# [Plan de Contingencia F3] El modelo NO mide temperatura y de un JPEG pseudo-color
+# no se recupera radiometria absoluta: por eso la magnitud mostrada es un INDICE DE
+# INTENSIDAD TERMICA RELATIVA (ITR) en escala 0-100 (relativo, NO grados Celsius).
+# `banda_itr` es la banda relativa por clase que se modula con la confianza.
 MATURITY_INFO = {
-    "calidad_promedio": {"etiqueta": "Verde / Inmaduro", "rango_temp": (15.0, 21.0), "color": "#2f6fed"},
-    "alta_calidad": {"etiqueta": "Maduro / Optimo", "rango_temp": (22.0, 32.0), "color": "#16a34a"},
-    "defectuoso": {"etiqueta": "Sobre-Maduro", "rango_temp": (33.0, 42.0), "color": "#dc2626"},
+    "calidad_promedio": {"etiqueta": "Verde / Inmaduro", "banda_itr": (15.0, 35.0), "color": "#2f6fed"},
+    "alta_calidad": {"etiqueta": "Maduro / Optimo", "banda_itr": (40.0, 70.0), "color": "#16a34a"},
+    "defectuoso": {"etiqueta": "Sobre-Maduro", "banda_itr": (75.0, 100.0), "color": "#dc2626"},
 }
 
 IMAGE_SIZE = 224

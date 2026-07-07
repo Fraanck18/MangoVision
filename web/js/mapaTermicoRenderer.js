@@ -50,7 +50,7 @@ function generarLote(camionId, loteIdx) {
   const pctSobremaduro = (conteo.sobremaduro / numMuestras) * 100;
   if (pctSobremaduro > 40) alertas.push({ tipo: "Crítico", msg: `${pctSobremaduro.toFixed(0)}% sobre-maduros detectados.` });
   else if (pctSobremaduro > 20) alertas.push({ tipo: "Alerta", msg: `Sobre-maduración incipiente detectada.` });
-  if (tempMax > 40) alertas.push({ tipo: "Crítico", msg: `T° crítica ${tempMax.toFixed(1)}°C. Riesgo de pérdida.` });
+  if (tempMax > 40) alertas.push({ tipo: "Crítico", msg: `ITR crítica ${tempMax.toFixed(1)} ITR. Riesgo de pérdida.` });
 
   return {
     id: `${camionId}-L${String(loteIdx + 1).padStart(2, "0")}`,
@@ -182,7 +182,7 @@ function abrirDetalleCamion(camionId) {
         <div class="mt-lote-id">${l.nombre} ${tieneAlerta ? '<span class="mt-alerta-lote">⚠</span>' : ""}</div>
         <div class="mt-lote-resumen">
           <span>${l.numMuestras} muestras</span>
-          <span>${l.tempProm}°C prom. (${l.tempMin}–${l.tempMax}°C)</span>
+          <span>${l.tempProm} ITR prom. (${l.tempMin}–${l.tempMax} ITR)</span>
         </div>
       </div>`;
   }).join("");
@@ -198,8 +198,8 @@ function abrirDetalleCamion(camionId) {
   const html = `
     <div class="mt-camion-card-stats" style="margin-bottom:14px;">
       <span class="mt-estado-badge ${camion.estado === "Crítico" ? "critico" : ""}" style="color:${colorEstado};border-color:${colorEstado};">${camion.estado}</span>
-      <span>${camion.tempProm}°C prom.</span>
-      <span>${camion.tempMax}°C máx.</span>
+      <span>${camion.tempProm} ITR prom.</span>
+      <span>${camion.tempMax} ITR máx.</span>
     </div>
     <p class="holo-hint">Ruta: ${camion.ruta} · Origen: ${camion.origen}</p>
     <h4 style="font-size:12.5px;margin:16px 0 8px;">Lotes (${camion.numLotes})</h4>
@@ -232,7 +232,7 @@ function renderResumenGlobal(flota) {
   cont.innerHTML = `
     <div class="mt-resumen-fila"><span>Total muestras</span><strong>${totalMuestras}</strong></div>
     <div class="mt-resumen-fila"><span>Lotes activos</span><strong>${totalLotes}</strong></div>
-    <div class="mt-resumen-fila"><span>T° prom. global</span><strong>${tempGlobal.toFixed(1)} °C</strong></div>
+    <div class="mt-resumen-fila"><span>ITR prom. global</span><strong>${tempGlobal.toFixed(1)}  ITR</strong></div>
     <div class="mt-resumen-fila"><span>Alertas activas</span><strong style="color:var(--red)">${totalAlertas}</strong></div>
     <div class="mt-resumen-barras">
       <div class="mt-resumen-barra-row"><span style="color:var(--accent)">Maduro</span><div class="mt-barra-bg"><div class="mt-barra-fill" style="width:${pctM}%;background:var(--accent)"></div></div><span>${pctM}%</span></div>
@@ -275,7 +275,7 @@ function renderCamionesDetalle(flota, filtro) {
       // Heatmap: cada muestra es una celda coloreada
       const celdasHtml = lote.muestras.map((m) => {
         const bg = colorCelda(m.temp);
-        return `<div class="mt-celda" style="background:${bg}" title="${m.temp}°C · ${m.etiqueta} · Conf: ${m.confianza}%">${m.temp.toFixed(0)}°</div>`;
+        return `<div class="mt-celda" style="background:${bg}" title="${m.temp} ITR · ${m.etiqueta} · Conf: ${m.confianza}%">${m.temp.toFixed(0)} ITR</div>`;
       }).join("");
 
       const pctM = ((lote.conteo.maduro / lote.numMuestras) * 100).toFixed(0);
@@ -306,8 +306,8 @@ function renderCamionesDetalle(flota, filtro) {
             <div class="mt-camion-card-sub">Origen: ${camion.origen} · ${camion.numLotes} lotes · ${camion.totalMuestras} muestras</div>
           </div>
           <div class="mt-camion-card-stats">
-            <span>${camion.tempProm}°C</span>
-            <span>${camion.tempMax}°C</span>
+            <span>${camion.tempProm} ITR</span>
+            <span>${camion.tempMax} ITR</span>
             ${alertaHtml}
           </div>
         </div>
@@ -330,15 +330,15 @@ function abrirDetalleLote(camionId, loteId) {
   const muestrasHtml = lote.muestras.map((m, i) => `
     <div class="mt-metrica-fila">
       <span>Muestra ${i + 1} · ${m.etiqueta}</span>
-      <strong style="color:${colorCelda(m.temp)}">${m.temp}°C · ${m.confianza}%</strong>
+      <strong style="color:${colorCelda(m.temp)}">${m.temp} ITR · ${m.confianza}%</strong>
     </div>`).join("");
 
   const html = `
-    <p class="holo-hint">${camion.nombre} (${camion.id}) · ${lote.numMuestras} muestras · prom. ${lote.tempProm}°C</p>
+    <p class="holo-hint">${camion.nombre} (${camion.id}) · ${lote.numMuestras} muestras · prom. ${lote.tempProm} ITR</p>
     <div class="grilla-zonas" style="grid-template-columns:repeat(3,1fr); margin-bottom:14px;">
-      <div class="zona-card"><div class="zona-nombre">MÍNIMA</div><div class="zona-temp">${lote.tempMin}°C</div></div>
-      <div class="zona-card"><div class="zona-nombre">PROMEDIO</div><div class="zona-temp">${lote.tempProm}°C</div></div>
-      <div class="zona-card"><div class="zona-nombre">MÁXIMA</div><div class="zona-temp">${lote.tempMax}°C</div></div>
+      <div class="zona-card"><div class="zona-nombre">MÍNIMA</div><div class="zona-temp">${lote.tempMin} ITR</div></div>
+      <div class="zona-card"><div class="zona-nombre">PROMEDIO</div><div class="zona-temp">${lote.tempProm} ITR</div></div>
+      <div class="zona-card"><div class="zona-nombre">MÁXIMA</div><div class="zona-temp">${lote.tempMax} ITR</div></div>
     </div>
     <h4 style="font-size:12.5px;margin:0 0 8px;">Muestras (${lote.numMuestras})</h4>
     <div class="lista-virtual" style="max-height:320px;">${muestrasHtml}</div>
@@ -363,9 +363,9 @@ function renderMetricas(flota) {
   const confProm = confianzas.reduce((a, b) => a + b, 0) / confianzas.length;
 
   cont.innerHTML = `
-    <div class="mt-metrica-fila"><span>T° mínima</span><strong style="color:var(--blue)">${tempMin.toFixed(1)} °C</strong></div>
-    <div class="mt-metrica-fila"><span>T° promedio</span><strong>${tempProm.toFixed(1)} °C</strong></div>
-    <div class="mt-metrica-fila"><span>T° máxima</span><strong style="color:var(--red)">${tempMax.toFixed(1)} °C</strong></div>
+    <div class="mt-metrica-fila"><span>ITR mínima</span><strong style="color:var(--blue)">${tempMin.toFixed(1)}  ITR</strong></div>
+    <div class="mt-metrica-fila"><span>ITR promedio</span><strong>${tempProm.toFixed(1)}  ITR</strong></div>
+    <div class="mt-metrica-fila"><span>ITR máxima</span><strong style="color:var(--red)">${tempMax.toFixed(1)}  ITR</strong></div>
     <div class="mt-metrica-fila"><span>Lotes OK</span><strong style="color:var(--accent)">${flota.reduce((a, c) => a + c.lotes.filter((l) => l.alertas.length === 0).length, 0)} / ${flota.reduce((a, c) => a + c.numLotes, 0)}</strong></div>
     <div class="mt-metrica-fila"><span>Confianza prom.</span><strong>${confProm.toFixed(1)}%</strong></div>
     <div class="mt-metrica-fila"><span>Resolución</span><strong>320 × 240</strong></div>`;

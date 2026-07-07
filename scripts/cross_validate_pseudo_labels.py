@@ -25,19 +25,18 @@ RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 
 from src.config import CLASS_NAMES, IMAGE_SIZE
-from src.models.resnet50_custom import ResNet50MangoQC, obtener_transformaciones_validacion
+from src.models.resnet50_custom import cargar_pesos_arquitectura_consciente, obtener_transformaciones_validacion
 from src.models.baseline_svm import extraer_descriptor_hog
 
 CARPETA_FLIR = RAIZ / "dataset_mangos" / "extracted" / "flir_one" / "Thermal Mango Image Dataset - FLIR One" / "Thermal"
-PESOS_RESNET = RAIZ / "dataset_mangos" / "resnet18_mango_qc.pt"
+PESOS_RESNET = RAIZ / "dataset_mangos" / "best_model.pth"   # ResNet50 (modelo unico)
 PESOS_SVM = RAIZ / "dataset_mangos" / "baseline_svm.pkl"
 SALIDA = RAIZ / "dataset_mangos" / "flir_pseudo_labels.json"
 
 
 def predecir_resnet(rutas):
-    modelo = ResNet50MangoQC()
-    modelo.load_state_dict(torch.load(PESOS_RESNET, map_location="cpu"))
-    modelo.eval()
+    # Carga arquitectura-consciente (detecta ResNet50 del checkpoint).
+    modelo = cargar_pesos_arquitectura_consciente(PESOS_RESNET, torch.device("cpu"))
     preprocess = obtener_transformaciones_validacion()
 
     predicciones = []

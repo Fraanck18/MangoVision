@@ -1,10 +1,10 @@
 # MangoVision
 
-Sistema de inspección no destructiva de calidad para mango de exportación, basado en termografía infrarroja y aprendizaje profundo. Detecta necrosis celular y desórdenes metabólicos internos sin recurrir a muestreos destructivos, a escala industrial.
+Sistema de inspección no destructiva de calidad para mango de exportación, basado en termografía infrarroja y aprendizaje profundo. Clasifica la calidad del fruto mediante **detección de anomalías térmicas** —cuánto se desvía su firma térmica de la población normal— sin muestreo destructivo y a escala industrial. **No** diagnostica una patología concreta (necrosis, desorden metabólico): señala la desviación térmica, y esa es la señal de calidad. Ver [`docs/INTEGRIDAD.md`](docs/INTEGRIDAD.md).
 
 ## Contexto del problema
 
-La inspección visual manual de mango solo evalúa la superficie del fruto y es ineficaz para detectar defectos internos. MangoVision aprovecha el principio de **Inercia Térmica** (Ley de Enfriamiento de Newton): el tejido necrosado altera el calor específico y la conductividad de la pulpa, generando gradientes térmicos superficiales anómalos y detectables por cámara infrarroja — ver [`src/domain_physics/thermal_inertia.py`](src/domain_physics/thermal_inertia.py).
+La inspección visual manual de mango solo evalúa la superficie del fruto y es ineficaz para detectar defectos internos. MangoVision aprovecha la **inercia térmica** de la pulpa, pero — al disponer solo de un **único frame estático** por fruto — no mide la dinámica de enfriamiento (dT/dt), sino su huella espacial: el **Perfil Espacial de Distribución Térmica Estática (PEDTE)**, el gradiente térmico centro-periferia y las anomalías locales captables en una sola imagen — ver [`src/domain_physics/thermal_inertia.py`](src/domain_physics/thermal_inertia.py). Las intensidades se expresan como **Índice de Intensidad Térmica Relativa (ITR)**, no en °C: la cámara de consumo entrega pseudo-color, no radiometría absoluta.
 
 ## Arquitectura
 
@@ -12,23 +12,89 @@ La inspección visual manual de mango solo evalúa la superficie del fruto y es 
 | :--- | :--- |
 | Almacenamiento | Data Lake distribuido en HDFS (`data-lake/mangos/`) |
 | Cómputo distribuido | Apache Spark, inferencia batch vía `mapInPandas` |
-| Modelo principal | ResNet50 (Transfer Learning) + cabecera con BatchNorm/Dropout |
-| Modelo de referencia | HOG + LinearSVC |
+| Modelo principal | Backbone ligero (ResNet18 por defecto / MobileNetV3, `MANGO_BACKBONE`) + cabecera BatchNorm/Dropout |
+| Modelo de referencia | HOG + LinearSVC · y features físicas PEDTE + LogisticRegression |
 | Tracking / Registry | MLflow |
 | Despliegue | FastAPI + Docker |
 
-## Resultados (ResNet50 vs. Baseline)
+## Resultados
 
-| Métrica | ResNet50 | Baseline (HOG+SVM) |
-| :--- | :--- | :--- |
-| Accuracy | 95.2%* | — |
-| F1-Score | 95.5%* | — |
-| Precision | 96.0%* | 89.5% |
-| Recall | 95.0%* | 88.0% |
+> **Sin métricas heredadas.** Las cifras anteriores (~95 %) provenían de otra
+> arquitectura (ResNet18 previo) con pesos incompatibles y, sobre todo, se medían
+> en su mayoría sobre un **dataset sintético** — no eran exactitud sobre fruta real.
+> Se han retirado por integridad.
 
-\* Cifras heredadas de la corrida con ResNet18 (arquitectura anterior); se actualizan automáticamente la próxima vez que se ejecute `scripts/train_resnet50.py`, ya que los pesos viejos no son compatibles con la nueva arquitectura y el modelo debe reentrenarse.
+La **Línea Base Real Independiente** se obtiene ejecutando el pipeline honesto y se
+publicará aquí con su valor real (aunque sea modesto):
 
-Todas las métricas se calculan dinámicamente sobre tensores reales en `src/models/evaluator.py` — sin valores estáticos ni hardcoding (ver `tests/test_metrics.py`).
+- **Pre-entrenamiento** sobre el pool sintético estocástico (solo domain adaptation).
+- **Fine-tuning** sobre el dato real con separación estricta **Train / Validation /
+  Test** (el Test real queda bloqueado y se evalúa una única vez; el modelo se
+  elige por *Validation*, nunca por *test*).
+- **Evaluación honesta** por **Leave-One-Group-Out** agrupando por mango físico
+  (`scripts/honest_grouped_cv.py`).
+
+```bash
+python scripts/generate_synthetic_thermal.py   # pool sintético de PRE-ENTRENAMIENTO (aislado)
+python scripts/train_resnet50.py               # pre-train + fine-tune + test único → best_model.pth
+python scripts/honest_grouped_cv.py            # métrica honesta LOGO restringido a verdad humana
+```
+
+> **Correcciones de fallos críticos** (carga de pesos arquitectura-consciente, ETL
+> Spark raw→parquet, LOGO restringido a procedencia humana, y gate de auditoría
+> relativo y honesto): ver **[`docs/FIXES_CRITICOS.md`](docs/FIXES_CRITICOS.md)**.
+> El gate ya no usa un 0.90 quemado inalcanzable: deriva su umbral de la línea base
+> honesta documentada (`web/data/cv_honesta.json`) y devuelve un veredicto
+> estructurado que realmente bloquea o aprueba, medido solo sobre datos reales.
+
+Todas las métricas se calculan dinámicamente sobre tensores reales en
+`src/models/evaluator.py` — sin valores estáticos ni hardcoding (ver
+`tests/test_metrics.py`).
+
+## Data Augmentation avanzada
+
+Con muy pocas imágenes térmicas reales, el aumento de datos es central. La
+estrategia completa (9 técnicas *térmicamente seguras*, su justificación y dónde
+vive cada una) está en **[`docs/DATA_AUGMENTATION.md`](docs/DATA_AUGMENTATION.md)**.
+Regla que lo filtra todo: en pseudo-color Ironbow **el matiz es la etiqueta**, así
+que nunca se perturba el color; las técnicas o son geométricas, o operan en el
+dominio térmico (ITR) y re-codifican con la paleta física, o mezclan en el espacio
+de la etiqueta.
+
+```bash
+python scripts/materializar_augmentation.py      # #1 augmentation física (offline -> HDFS-ready)
+python scripts/pretrain_self_supervised.py       # #2 SimSiam sobre el stream NO etiquetado
+python scripts/train_gan_augment.py              # #8 cGAN + DiffAugment (data-efficient)
+# #4-7 (MixUp, erasing, elástica, geométrico) van integradas en el train;
+# #3 (agregación temporal) y #9 (TTA) actúan en streaming/inferencia.
+```
+
+### Evaluación honesta (detección de anomalías)
+
+```bash
+python scripts/deteccion_anomalias.py    # detector one-class + baseline trivial (AUC)
+python scripts/honest_grouped_cv.py      # LOGO por mango sobre dato real (binario)
+```
+
+**Resultado presentable** (fruta real, held-out por mango): un score de **brillo
+térmico separa `defectuoso` de `alta_calidad` a AUC 0.87** (etiqueta humana → no
+circular); el detector PEDTE (0.65) **no lo supera**, así que se reporta que la señal
+es simple. Ledger completo en [`docs/RESULTADOS.md`](docs/RESULTADOS.md).
+
+> [!important] Alcance real e integridad
+> MangoVision es **clasificación de calidad por detección de ANOMALÍAS térmicas**
+> (cuánto se desvía la firma del fruto de lo normal), **no** un diagnóstico de
+> necrosis interna. La augmentation de temperatura y las muestras físicas son
+> **datos de entrenamiento / sondas declaradas**, nunca conjunto de evaluación: un
+> baseline trivial de brillo iguala al CNN sobre ellas (tautología, +0.9 pp). La
+> única métrica honesta es LOGO por mango sobre dato real, con el baseline trivial
+> al lado. Contrato en **[`docs/INTEGRIDAD.md`](docs/INTEGRIDAD.md)** · resultados en
+> **[`docs/RESULTADOS.md`](docs/RESULTADOS.md)**.
+
+Código en [`src/augmentation/`](src/augmentation/),
+[`src/inference/tta.py`](src/inference/tta.py) y
+[`src/streaming/agregacion_temporal.py`](src/streaming/agregacion_temporal.py);
+tests en [`tests/test_augmentation.py`](tests/test_augmentation.py).
 
 ## Estructura del repositorio
 

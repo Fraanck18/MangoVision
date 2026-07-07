@@ -44,11 +44,11 @@ def main():
 
     print(f"\nFruto detectado en: {df['fruto_detectado'].sum()} / {len(df)} imagenes")
 
-    print("\nEstadisticas de fraccion_area_anomala_fria por clase (particion=train):")
-    print(df[df.particion == "train"].groupby("clase")["fraccion_area_anomala_fria"].describe())
+    print("\nEstadisticas de fraccion_area_anomala_baja por clase (particion=train):")
+    print(df[df.particion == "train"].groupby("clase")["fraccion_area_anomala_baja"].describe())
 
-    print("\nEstadisticas de desviacion_maxima_fria por clase (particion=train):")
-    print(df[df.particion == "train"].groupby("clase")["desviacion_maxima_fria"].describe())
+    print("\nEstadisticas de desviacion_maxima_baja por clase (particion=train):")
+    print(df[df.particion == "train"].groupby("clase")["desviacion_maxima_baja"].describe())
 
 
 if __name__ == "__main__":

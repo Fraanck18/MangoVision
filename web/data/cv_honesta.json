@@ -1,0 +1,27 @@
+{
+  "metodo": "LeaveOneGroupOut RESTRINGIDO: solo grupos de procedencia humana se evaluan; pseudo/aumentado/sintetico solo expanden el train",
+  "features": "PEDTE (ITR Min-Max local + Gaussiano 3x3 + gradiente centro-periferia)",
+  "n_splits": 11,
+  "n_grupos": 11,
+  "n_grupos_humanos_evaluables": 11,
+  "n_imagenes_humanas": 320,
+  "n_imagenes_expansion_train": 0,
+  "accuracy_media": 0.6087,
+  "accuracy_std": 0.3266,
+  "precision_defectuoso_media": 0.3636,
+  "recall_defectuoso_media": 0.2001,
+  "f1_defectuoso_media": 0.2251,
+  "accuracy_por_fold": [
+    0.5909,
+    0.7632,
+    0.2439,
+    0.8462,
+    0.2222,
+    0.8286,
+    1.0,
+    0.3333,
+    0.8333,
+    0.0345,
+    1.0
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "enfoque": "deteccion de anomalias termicas; normal=alta_calidad (etiqueta humana externa)",
+  "metodo": "mahalanobis",
+  "n_mangos_normales": 4,
+  "falsas_alarmas_detector": 0.1563,
+  "falsas_alarmas_trivial": 0.0754,
+  "auc_detector": 0.6451,
+  "auc_trivial": 0.8735,
+  "detector_supera_trivial": false,
+  "sensibilidad_sondas_fisicas_declaradas": 1.0,
+  "nota": "sondas fisicas = sinteticas declaradas, NO verdad de evaluacion"
+}

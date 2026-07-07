@@ -36,6 +36,7 @@ from src.config import (
 from src.inference.diagnostico import diagnosticar_imagen_pil
 from src.ingestion.hdfs_client import leer_bytes
 from src.streaming.kafka_cliente import crear_consumidor
+from src.streaming.verificador_anomalia import entrenar_verificador, verificar
 
 logger = logging.getLogger("mangovision.evaluador")
 
@@ -49,6 +50,16 @@ def _conexion():
     return con
 
 
+# Columnas de la VERIFICACION de anomalia (paso previo a clasificar). Se guardan
+# el veredicto del detector PEDTE y el del baseline trivial (guardarrail).
+_COLUMNAS_ANOMALIA = {
+    "score_anomalia": "REAL",
+    "es_anomalia": "INTEGER",
+    "score_trivial": "REAL",
+    "es_anomalia_trivial": "INTEGER",
+}
+
+
 def inicializar_db():
     con = _conexion()
     con.execute("""
@@ -60,9 +71,18 @@ def inicializar_db():
             confianza     REAL,
             is_correct    INTEGER,
             degradada     INTEGER,
-            lote_ingesta  TEXT
+            lote_ingesta  TEXT,
+            score_anomalia       REAL,
+            es_anomalia          INTEGER,
+            score_trivial        REAL,
+            es_anomalia_trivial  INTEGER
         )
     """)
+    # Migracion para DBs existentes: añade columnas de anomalia si faltan.
+    existentes = {fila[1] for fila in con.execute("PRAGMA table_info(live_evaluations)")}
+    for columna, tipo in _COLUMNAS_ANOMALIA.items():
+        if columna not in existentes:
+            con.execute(f"ALTER TABLE live_evaluations ADD COLUMN {columna} {tipo}")
     con.commit()
     con.close()
 
@@ -70,8 +90,10 @@ def inicializar_db():
 def registrar_evaluacion(fila):
     con = _conexion()
     con.execute(
-        "INSERT INTO live_evaluations (ts, id_imagen, y_true, y_pred, confianza, is_correct, degradada, lote_ingesta) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO live_evaluations "
+        "(ts, id_imagen, y_true, y_pred, confianza, is_correct, degradada, lote_ingesta, "
+        " score_anomalia, es_anomalia, score_trivial, es_anomalia_trivial) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         fila,
     )
     con.commit()
@@ -109,6 +131,15 @@ def calcular_metricas_vivo():
     valores = [r[0] for r in cur.fetchall()]
     cur.execute("SELECT ts FROM live_evaluations ORDER BY ts DESC LIMIT 1")
     ultima_ts = cur.fetchone()[0]
+
+    # VERIFICACION de anomalia en ventana: tasa del detector PEDTE Y del baseline
+    # trivial de brillo (se muestran juntos -> guardarrail de honestidad).
+    cur.execute(
+        "SELECT AVG(es_anomalia), AVG(es_anomalia_trivial) FROM "
+        "(SELECT es_anomalia, es_anomalia_trivial FROM live_evaluations ORDER BY ts DESC LIMIT ?)",
+        (VENTANA_DESLIZANTE,),
+    )
+    tasa_det, tasa_triv = cur.fetchone()
     con.close()
 
     mitad = max(1, len(valores) // 2)
@@ -144,6 +175,11 @@ def calcular_metricas_vivo():
         "trend": trend,
         "drift_alert": drift,
         "ultima_actualizacion": ultima_ts,
+        # Verificacion de anomalia (paso previo a clasificar): tasa marcada como
+        # anomala por el detector PEDTE y por el baseline trivial de brillo. Ambas
+        # SIEMPRE juntas (guardarrail): en dato real el trivial es la referencia.
+        "tasa_anomalia_detector": round((tasa_det or 0.0) * 100, 1),
+        "tasa_anomalia_trivial": round((tasa_triv or 0.0) * 100, 1),
     }
     if drift:
         causa = "accuracy de ventana" if drift_por_accuracy else "confianza de la red"
@@ -174,6 +210,11 @@ def _evaluar_evento(evento, estado_modelo):
         logger.warning("Imagen ilegible en evento: %s", evento.get("ruta_imagen"))
         return
 
+    # PASO 1 — VERIFICACION de anomalia (previa a clasificar). Detector PEDTE +
+    # baseline trivial de brillo, siempre ambos (guardarrail de honestidad).
+    verif = verificar(estado_modelo.get("verificador"), imagen)
+
+    # PASO 2 — CLASIFICACION con ResNet50.
     diag = diagnosticar_imagen_pil(
         imagen, estado_modelo["modelo"], estado_modelo["device"], estado_modelo["preprocess"]
     )
@@ -188,11 +229,23 @@ def _evaluar_evento(evento, estado_modelo):
         int(y_pred == y_true),
         int(bool(evento.get("degradada"))),
         evento.get("lote_ingesta"),
+        verif["score_anomalia"],
+        int(bool(verif["es_anomalia"])),
+        verif["score_trivial"],
+        int(bool(verif["es_anomalia_trivial"])),
     ))
 
 
 def _bucle_consumidor(estado_modelo):
     inicializar_db()
+    # Ajusta el verificador de anomalia UNA vez (normal real = alta_calidad) antes
+    # de consumir. Si no hay datos, la verificacion queda desactivada (None-safe).
+    if estado_modelo.get("verificador") is None:
+        try:
+            estado_modelo["verificador"] = entrenar_verificador()
+        except Exception:
+            logger.exception("No se pudo entrenar el verificador de anomalia; se sigue sin verificacion.")
+            estado_modelo["verificador"] = None
     while not _detener.is_set():
         if estado_modelo.get("modelo") is None:
             _detener.wait(2)

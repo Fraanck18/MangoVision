@@ -57,6 +57,12 @@ function urlReporteCSV() {
   return `${API_BASE}/entrenamiento/reporte.csv`;
 }
 
+async function consultarEscala() {
+  const respuesta = await fetch(`${API_BASE}/config/escala`);
+  if (!respuesta.ok) throw new Error(`/config/escala respondio HTTP ${respuesta.status}`);
+  return respuesta.json();
+}
+
 async function obtenerPreferencias() {
   const respuesta = await fetch(`${API_BASE}/config/preferencias`);
   if (!respuesta.ok) throw new Error(`/config/preferencias respondio HTTP ${respuesta.status}`);

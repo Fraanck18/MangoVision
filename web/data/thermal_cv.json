@@ -1,0 +1,25 @@
+{
+  "tarea": "clasificacion de REGIMEN TERMICO (frio/medio/caliente)",
+  "metodo": "augmentation de temperatura + reetiquetado fisico determinista; split por mango fisico (Train/Val/Test disjuntos); seleccion por Val",
+  "k_variantes": 6,
+  "val_regimen_accuracy": 0.9633,
+  "test_regimen_accuracy": 0.9151,
+  "recall_por_clase": {
+    "alta_calidad": 0.834,
+    "calidad_promedio": 0.9293,
+    "defectuoso": 0.9954
+  },
+  "gate": {
+    "aprobado": true,
+    "accuracy": 0.9151,
+    "f1_weighted": 0.9141,
+    "umbral_usado": 0.6087,
+    "baseline": 0.6087,
+    "margen": 0.0,
+    "fuente_baseline": "cv_honesta.json (LOGO, 11 grupos humanos)",
+    "n_muestras": 648,
+    "n_reales": 648,
+    "motivo": "APROBADO: accuracy real 0.915 >= umbral 0.609 (baseline 0.609 + margen 0.000, fuente: cv_honesta.json (LOGO, 11 grupos humanos))."
+  },
+  "segundos": 286.6
+}

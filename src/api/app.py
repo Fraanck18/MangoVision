@@ -25,9 +25,11 @@ from PIL import Image
 from pydantic import BaseModel
 
 from src.config import (
+    CLASS_NAMES,
     HDFS_NAMENODE,
     HDFS_RAW_PATH_WEBHDFS,
     INTERVALO_INGESTA_SEGUNDOS,
+    MATURITY_INFO,
     MLFLOW_MODEL_NAME,
     MLFLOW_MODEL_STAGE,
     NUM_CLASSES,
@@ -37,8 +39,8 @@ from src.inference.diagnostico import diagnosticar_imagen_pil
 from src.ingestion.hdfs_client import leer_bytes
 from src.ingestion.scheduler import activar_fallo_sensor, iniciar_scheduler_ingesta
 from src.models.resnet50_custom import (
-    ResNet50MangoQC,
     cargar_modelo_mlflow_registry,
+    cargar_pesos_arquitectura_consciente,
     obtener_transformaciones_validacion,
 )
 from src.pipeline.historial_entrenamiento import agregar_a_historial, escribir_estado, leer_estado, leer_historial
@@ -49,11 +51,18 @@ from src.pipeline.worker_inference import (
     listar_todos_los_lotes,
 )
 from src.streaming.evaluador_online import calcular_metricas_vivo, iniciar_evaluador_online
+from src.streaming.reporte_lotes import calcular_reporte_lotes
 
 logger = logging.getLogger("mangovision.api")
 
 RAIZ = Path(__file__).resolve().parent.parent.parent
-PESOS_LOCALES = RAIZ / "dataset_mangos" / "resnet50_mango_qc_multiclase.pt"
+# [F4/F7] El entrenamiento honesto guarda el mejor modelo (por VALIDATION) en
+# best_model.pth. El backbone se DETECTA del checkpoint al cargar
+# (cargar_pesos_arquitectura_consciente), no se asume. Se ELIMINO el fallback a
+# resnet50_mango_qc_multiclase.pt: cargar pesos ResNet50 en un modelo ResNet18 era
+# un crash garantizado en el arranque (fallo critico #4). Los pesos legacy de
+# ResNet50 son incompatibles con el backbone ligero actual (ver README).
+PESOS_LOCALES = RAIZ / "dataset_mangos" / "best_model.pth"
 SCRIPT_ENTRENAMIENTO = RAIZ / "scripts" / "train_resnet50.py"
 PREFERENCIAS_USUARIO = Path(PREFERENCIAS_USUARIO_PATH)
 
@@ -80,16 +89,18 @@ class DiagnosticoResponse(BaseModel):
     clase_id: int
     confianza: float
     categoria: str
-    temperatura_estimada: float
+    indice_itr: float          # [F3] indice relativo 0-100 (no °C)
+    unidad: str
     color: str
 
 
 def _cargar_pesos_locales(device):
     if not PESOS_LOCALES.exists():
         raise FileNotFoundError(f"No existen pesos locales en {PESOS_LOCALES}")
-    modelo = ResNet50MangoQC(num_classes=NUM_CLASSES)
-    modelo.load_state_dict(torch.load(PESOS_LOCALES, map_location=device))
-    return modelo.to(device)
+    # Detecta el backbone desde el propio checkpoint y carga de forma defensiva:
+    # si el checkpoint es incompatible, lanza ValueError (lo captura el startup y
+    # deja modelo=None) en vez de reventar el proceso.
+    return cargar_pesos_arquitectura_consciente(PESOS_LOCALES, device, num_classes=NUM_CLASSES)
 
 
 @app.on_event("startup")
@@ -258,6 +269,28 @@ def _filas_reporte(reporte):
     return [{"clase": clase, **metricas} for clase, metricas in reporte.items()]
 
 
+@app.get("/config/escala")
+def obtener_escala():
+    """
+    [F8] FUENTE UNICA de la escala termica para el frontend. El backend pivoto de
+    °C a ITR relativo (F3); este endpoint expone la verdad autoritativa (bandas,
+    colores y etiquetas por clase desde `MATURITY_INFO`) para que la UI NO duplique
+    ni desincronice la escala. Todo en ITR relativo 0-100, nunca °C.
+    """
+    return {
+        "unidad": "ITR (relativo 0-100, no °C)",
+        "rango": [0, 100],
+        "clases": {
+            clase: {
+                "etiqueta": MATURITY_INFO[clase]["etiqueta"],
+                "banda_itr": list(MATURITY_INFO[clase]["banda_itr"]),
+                "color": MATURITY_INFO[clase]["color"],
+            }
+            for clase in CLASS_NAMES
+        },
+    }
+
+
 @app.get("/config/preferencias")
 def obtener_preferencias():
     """Preferencias de UI persistidas en backend (tema, etc.), no solo en localStorage del navegador actual."""
@@ -367,6 +400,16 @@ def servir_imagen(ruta: str):
         raise HTTPException(status_code=404, detail="Imagen no encontrada en el Data Lake.")
     media = "image/png" if ruta.lower().endswith(".png") else "image/jpeg"
     return Response(content=contenido, media_type=media, headers={"Cache-Control": "max-age=3600"})
+
+
+@app.get("/reporte/lotes")
+def reporte_lotes():
+    """
+    [Batch] Reporte agregado por lote/cargamento (rollup del stream, NO re-clasifica).
+    Al llegar el camion a destino: % anomalos (detector + trivial), degradadas,
+    distribucion de clases y tendencia de anomalia (alerta de cadena de frio).
+    """
+    return calcular_reporte_lotes()
 
 
 @app.get("/metricas/vivo")

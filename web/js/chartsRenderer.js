@@ -1,25 +1,21 @@
 /**
  * Histograma de distribucion termica por estado, dibujado en <canvas> sin
- * librerias externas. Las barras se colorean segun el rango de temperatura
- * (azul=inmaduro, verde=optimo, rojo=sobre-maduro) y se recalculan cada vez
- * que llega un resultado real de /diagnostico (ver acumularMuestraGrafica).
+ * librerias externas. [F10] La escala es ITR relativo 0-100 (NO °C): buckets y
+ * colores vienen de la FUENTE UNICA `escala.js` (BUCKETS_ITR, colorPorITR), que
+ * refleja MATURITY_INFO del backend. Antes usaba buckets °C [15..48] y un ITR de
+ * 75-100 (defectuoso) se salia del ultimo bucket -> se descoloreaba.
  */
-const BUCKETS_TEMP = [15, 17, 19, 24, 28, 31, 34, 37, 48];
-let conteosBuckets = new Array(BUCKETS_TEMP.length - 1).fill(0);
+let conteosBuckets = new Array(BUCKETS_ITR.length - 1).fill(0);
 
-function colorParaTemperatura(temp) {
-  if (temp <= 21) return "#2f6fed";
-  if (temp <= 32) return "#1f9d6b";
-  return "#dc2626";
-}
-
-function acumularMuestraGrafica(temperatura) {
-  for (let i = 0; i < BUCKETS_TEMP.length - 1; i += 1) {
-    if (temperatura >= BUCKETS_TEMP[i] && temperatura < BUCKETS_TEMP[i + 1]) {
+function acumularMuestraGrafica(itr) {
+  for (let i = 0; i < BUCKETS_ITR.length - 1; i += 1) {
+    if (itr >= BUCKETS_ITR[i] && itr < BUCKETS_ITR[i + 1]) {
       conteosBuckets[i] += 1;
       break;
     }
   }
+  // El ultimo bucket es cerrado por la derecha (incluye ITR = 100).
+  if (itr >= BUCKETS_ITR[BUCKETS_ITR.length - 1]) conteosBuckets[conteosBuckets.length - 1] += 1;
   renderGraficaDistribucion();
 }
 
@@ -39,9 +35,9 @@ function renderGraficaDistribucion() {
     const x = 30 + i * anchoBarra;
     const alturaBarra = (conteo / maxConteo) * (alto - margenInferior - 14);
     const y = alto - margenInferior - alturaBarra;
-    const tempMedia = (BUCKETS_TEMP[i] + BUCKETS_TEMP[i + 1]) / 2;
+    const itrMedio = (BUCKETS_ITR[i] + BUCKETS_ITR[i + 1]) / 2;
 
-    ctx.fillStyle = conteo > 0 ? colorParaTemperatura(tempMedia) : "#e3e9e6";
+    ctx.fillStyle = conteo > 0 ? colorPorITR(itrMedio) : "#e3e9e6";
     ctx.beginPath();
     ctx.roundRect(x, y, anchoBarra - 8, Math.max(alturaBarra, 4), 4);
     ctx.fill();
@@ -49,6 +45,6 @@ function renderGraficaDistribucion() {
     ctx.fillStyle = "#6b7d76";
     ctx.font = "10px -apple-system, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText(`${BUCKETS_TEMP[i]}°`, x + (anchoBarra - 8) / 2, alto - 12);
+    ctx.fillText(`${BUCKETS_ITR[i]}`, x + (anchoBarra - 8) / 2, alto - 12);
   });
 }

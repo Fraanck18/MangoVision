@@ -25,20 +25,28 @@ sys.path.insert(0, str(RAIZ))
 from PIL import Image
 
 from src.config import CLASS_NAMES
-from src.models.resnet50_custom import ResNet50MangoQC, obtener_transformaciones_validacion
+from src.models.resnet50_custom import (
+    cargar_pesos_arquitectura_consciente,
+    obtener_transformaciones_validacion,
+)
 
 CARPETA_FLIR = RAIZ / "dataset_mangos" / "extracted" / "flir_one" / "Thermal Mango Image Dataset - FLIR One" / "Thermal"
-PESOS_MODELO = RAIZ / "dataset_mangos" / "resnet18_mango_qc.pt"
+PESOS_MODELO = RAIZ / "dataset_mangos" / "best_model.pth"   # ResNet50 (modelo unico)
 SALIDA_PSEUDO_ETIQUETAS = RAIZ / "dataset_mangos" / "flir_pseudo_labels.json"
 
-UMBRAL_CONFIANZA = 0.90
+# [Plan de Contingencia F5] Filtro de confianza DRASTICO. Antes 0.90 dejaba pasar
+# demasiado ruido y el pseudo-etiquetado se auto-reforzaba, acumulando casi todo en
+# `alta_calidad`. Se sube a 0.98: solo se acepta una pseudo-etiqueta si la red esta
+# practicamente segura. ADEMAS es OBLIGATORIA una auditoria manual de las imagenes
+# aceptadas como `alta_calidad` (ver aviso al final). Si el desbalance persiste, se
+# corrige aguas abajo con undersampling de la clase mayoritaria o WeightedCrossEntropy
+# (peso inverso a la frecuencia), no aceptando mas ruido aqui.
+UMBRAL_CONFIANZA = 0.98
 
 
 def cargar_modelo_entrenado():
-    modelo = ResNet50MangoQC()
-    modelo.load_state_dict(torch.load(PESOS_MODELO, map_location="cpu"))
-    modelo.eval()
-    return modelo
+    # Detecta el backbone desde el checkpoint (no lo asume) y carga defensivamente.
+    return cargar_pesos_arquitectura_consciente(PESOS_MODELO, torch.device("cpu"))
 
 
 def pseudo_etiquetar():
@@ -77,6 +85,18 @@ def pseudo_etiquetar():
     print(f"Aceptadas (>= umbral): {len(aceptadas)} / {len(rutas_imagenes)}")
     print(f"Rechazadas (< umbral, descartadas): {len(rechazadas)}")
     print("Distribucion de clases aceptadas:", dict(confianzas_por_clase))
+
+    # [F5] Aviso de auditoria manual obligatoria + deteccion de desbalance.
+    total_aceptadas = sum(confianzas_por_clase.values())
+    if total_aceptadas:
+        clase_mayor, n_mayor = confianzas_por_clase.most_common(1)[0]
+        if n_mayor / total_aceptadas > 0.6:
+            print(
+                f"\n[F5][ADVERTENCIA] Desbalance: '{clase_mayor}' concentra "
+                f"{n_mayor}/{total_aceptadas} ({n_mayor/total_aceptadas:.0%}) de las pseudo-etiquetas. "
+                f"AUDITAR MANUALMENTE esas imagenes antes de reentrenar; si el balance no se "
+                f"puede corregir, aplicar undersampling o WeightedCrossEntropy en el entrenamiento."
+            )
 
     with open(SALIDA_PSEUDO_ETIQUETAS, "w") as f:
         json.dump(aceptadas, f, indent=2, ensure_ascii=False)

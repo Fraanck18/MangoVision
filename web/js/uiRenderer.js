@@ -13,24 +13,23 @@ const ZONAS_BASE = [
   { id: "F", nombre: "ZONA F" },
 ];
 
-function estadoZonaPorTemp(temp) {
-  if (temp < 21) return { texto: "Fría", clase: "frio" };
-  if (temp < 33) return { texto: "Óptima", clase: "optimo" };
-  if (temp < 38) return { texto: "Alerta", clase: "alerta" };
-  return { texto: "Crítica", clase: "critico" };
+// [F10] Estado de zona por ITR relativo (0-100), delegado a la escala unica
+// (escala.js). Antes usaba umbrales °C (21/33/38) que no aplican a ITR.
+function estadoZonaPorTemp(itr) {
+  return estadoZonaPorITR(itr);
 }
 
 function renderTarjetasStats(estado) {
   const cont = document.getElementById("tarjetas-stats");
   if (!cont) return;
 
-  const { tempPromedio, indiceMadurez, varianza, anomalias, precisionModelo } = estado;
+  const { tempPromedio, indiceMadurez, varianza, anomalias } = estado;
 
   cont.innerHTML = `
     <div class="tarjeta-stat">
-      <div class="etiqueta">TEMP. PROMEDIO 🌡</div>
-      <div class="valor">${tempPromedio.toFixed(1)} °C</div>
-      <div class="sub positivo">↑ +1.2°C vs ayer</div>
+      <div class="etiqueta">ITR PROMEDIO 🌡</div>
+      <div class="valor">${tempPromedio.toFixed(1)} ITR</div>
+      <div class="sub positivo">índice relativo (no °C)</div>
     </div>
     <div class="tarjeta-stat">
       <div class="etiqueta">ÍNDICE MADUREZ 🔘</div>
@@ -39,8 +38,8 @@ function renderTarjetasStats(estado) {
       <div class="barra-mini"><div style="width:${Math.min(100, indiceMadurez)}%"></div></div>
     </div>
     <div class="tarjeta-stat">
-      <div class="etiqueta">VARIANZA TÉRMICA ⚡</div>
-      <div class="valor">±${varianza.toFixed(1)} °C</div>
+      <div class="etiqueta">VARIANZA ITR ⚡</div>
+      <div class="valor">±${varianza.toFixed(1)} ITR</div>
       <div class="sub">Normal</div>
     </div>
     <div class="tarjeta-stat">
@@ -48,15 +47,38 @@ function renderTarjetasStats(estado) {
       <div class="valor">${anomalias} zonas</div>
       <div class="sub ${anomalias > 0 ? "alerta" : "positivo"}">${anomalias > 0 ? "Requiere revisión" : "Sin hallazgos"}</div>
     </div>
+    ${renderTarjetaVerificacion(estado.metricaVivo)}
     ${renderTarjetaPrecision(estado.metricaVivo)}
   `;
+}
+
+/**
+ * Tarjeta de VERIFICACIÓN de anomalía (paso previo a clasificar, streaming).
+ * Muestra SIEMPRE la tasa del detector PEDTE junto al baseline trivial de brillo
+ * (guardarraíl de honestidad): en dato real el trivial es la referencia (AUC 0.87).
+ */
+function renderTarjetaVerificacion(mv) {
+  if (!mv || mv.estado !== "ok" || mv.tasa_anomalia_trivial === undefined) {
+    return `
+    <div class="tarjeta-stat">
+      <div class="etiqueta">VERIFICACIÓN (anomalía) 🔎</div>
+      <div class="valor">— %</div>
+      <div class="sub">Esperando stream…</div>
+    </div>`;
+  }
+  return `
+    <div class="tarjeta-stat">
+      <div class="etiqueta">VERIFICACIÓN (anomalía) 🔎</div>
+      <div class="valor">${mv.tasa_anomalia_trivial.toFixed(1)} %</div>
+      <div class="sub">trivial (referencia) · detector PEDTE ${mv.tasa_anomalia_detector.toFixed(1)} %</div>
+    </div>`;
 }
 
 function renderTarjetaPrecision(mv) {
   if (!mv || mv.estado !== "ok") {
     return `
     <div class="tarjeta-stat">
-      <div class="etiqueta">PRECISIÓN MODELO (ventana) 🎯</div>
+      <div class="etiqueta">CLASIFICACIÓN · accuracy ventana 🎯</div>
       <div class="valor">— %</div>
       <div class="sub">Esperando stream Kafka…</div>
     </div>`;
@@ -68,7 +90,7 @@ function renderTarjetaPrecision(mv) {
   if (mv.drift_alert) {
     return `
     <div class="tarjeta-stat">
-      <div class="etiqueta">PRECISIÓN MODELO (ventana) 🎯</div>
+      <div class="etiqueta">CLASIFICACIÓN · accuracy ventana 🎯</div>
       <div class="valor">${mv.rolling_accuracy.toFixed(1)} %</div>
       <div class="sub alerta">⚠ DRIFT — posible condensación FLIR</div>
       <div class="barra-mini"><div style="width:${Math.min(100, mv.rolling_accuracy)}%; background:var(--red)"></div></div>
@@ -78,7 +100,7 @@ function renderTarjetaPrecision(mv) {
   const clase = mv.rolling_accuracy >= 90 ? "positivo" : mv.rolling_accuracy >= 80 ? "" : "alerta";
   return `
     <div class="tarjeta-stat">
-      <div class="etiqueta">PRECISIÓN MODELO (ventana ${mv.ventana}) 🎯</div>
+      <div class="etiqueta">CLASIFICACIÓN · accuracy ventana ${mv.ventana} 🎯</div>
       <div class="valor">${mv.rolling_accuracy.toFixed(1)} %</div>
       <div class="sub ${clase}">${flecha} ${mv.trend} · ${mv.muestras_totales} eval · conf ${mv.confianza_media}</div>
       <div class="barra-mini"><div style="width:${Math.min(100, mv.rolling_accuracy)}%"></div></div>
@@ -107,7 +129,7 @@ function renderClasificacionPorLote(estado) {
           <span class="pct" style="color:${clase.color}">${pct}%</span>
         </div>
         <div class="barra"><div style="width:${pct}%; background:${clase.color}"></div></div>
-        <div class="detalle">${conteo} unidades · Temp. media: ${tempMedia.toFixed(1)}°C</div>
+        <div class="detalle">${conteo} unidades · ITR medio: ${tempMedia.toFixed(1)}</div>
       </div>
     `;
   }).join("");
@@ -122,8 +144,8 @@ function renderParametrosAnalisis(estado) {
     ["FPS CAPTURA", "9 fps"],
     ["SENSOR", "FLIR Lepton 3.5"],
     ["EMISIVIDAD", "0.97"],
-    ["RANGO TEMP.", "-20 ~ 150°C"],
-    ["ALGORITMO", "CNN ResNet-50"],
+    ["ESCALA", "ITR 0–100 (relativa)"],
+    ["ALGORITMO", "CNN ResNet50"],
     ["MUESTRAS LOTE", `${estado.totalMuestras} und.`],
     ["TIEMPO PROC.", `${estado.tiempoProcMs.toFixed(1)} s / imagen`],
   ];
@@ -143,7 +165,7 @@ function renderZonasTemperatura(estado) {
     return `
       <div class="zona-card estado-${info.clase}">
         <div class="zona-nombre">${zona.nombre}</div>
-        <div class="zona-temp">${temp.toFixed(1)}°C</div>
+        <div class="zona-temp">${temp.toFixed(1)} ITR</div>
         <div class="zona-estado">${info.texto}</div>
       </div>
     `;
@@ -162,7 +184,7 @@ function renderMuestraReciente(diagnostico, urlImagen) {
   thumb.title = `${diagnostico.categoria} · ${(diagnostico.confianza * 100).toFixed(1)}%`;
   thumb.innerHTML = urlImagen
     ? `<img src="${urlImagen}" alt="${diagnostico.categoria}">`
-    : `${diagnostico.temperatura_estimada.toFixed(0)}°`;
+    : `${diagnostico.indice_itr.toFixed(0)} ITR`;
 
   tira.insertBefore(thumb, boton);
 }
