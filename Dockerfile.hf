@@ -1,0 +1,29 @@
+# Dockerfile para Hugging Face Spaces (SDK: Docker).
+# HF sirve la app en el puerto 7860 por defecto (ver app_port en README.md).
+FROM python:3.11-slim
+
+# Usuario no-root con UID 1000 (requisito/recomendacion de HF Spaces).
+RUN useradd -m -u 1000 user
+ENV PATH="/home/user/.local/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/home/user/.cache \
+    TORCH_HOME=/home/user/.cache/torch
+
+WORKDIR /app
+
+# Dependencias del sistema minimas (Pillow/torch no necesitan mucho; se dejan
+# libglib/libgl por si alguna transform las requiere).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --chown=user requirements.txt .
+RUN pip install --no-cache-dir --upgrade -r requirements.txt
+
+# Codigo + modelo + frontend (el .dockerignore evita copiar el dataset pesado).
+COPY --chown=user . .
+
+USER user
+EXPOSE 7860
+
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7860"]

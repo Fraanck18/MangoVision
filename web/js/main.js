@@ -132,7 +132,7 @@ function renderTodo() {
 function navegarVista(vista) {
   const vistas = [
     "vista-dashboard", "vista-mapa-termico", "vista-galeria", "vista-3d",
-    "vista-clasificador-ia", "vista-muestras", "vista-reportes", "vista-configuracion"
+    "vista-clasificador-ia", "vista-matematicas", "vista-muestras", "vista-reportes", "vista-configuracion"
   ];
   const mapaVista = {
     "dashboard": "vista-dashboard",
@@ -140,6 +140,7 @@ function navegarVista(vista) {
     "galeria": "vista-galeria",
     "vista3d": "vista-3d",
     "clasificador-ia": "vista-clasificador-ia",
+    "matematicas": "vista-matematicas",
     "muestras": "vista-muestras",
     "reportes": "vista-reportes",
     "configuracion": "vista-configuracion",

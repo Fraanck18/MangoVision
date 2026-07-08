@@ -1,0 +1,14 @@
+# Dependencias MINIMAS de despliegue (solo inferencia + servir el frontend).
+# NO incluye pyspark, hdfs, mlflow, kafka: esos son del entorno local de
+# entrenamiento/procesamiento y no van a la nube.
+# torch/torchvision en version CPU (+cpu) desde el indice oficial de PyTorch:
+# mucho mas ligero que la build CUDA por defecto de PyPI.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+python-multipart==0.0.9
+pillow==10.3.0
+numpy==1.26.4
+torch==2.3.1+cpu
+torchvision==0.18.1+cpu

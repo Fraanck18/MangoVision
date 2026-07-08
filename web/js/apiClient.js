@@ -2,9 +2,18 @@
  * Unico punto de acceso al backend FastAPI (src/api/app.py). Sin esto el
  * dashboard queda desconectado del modelo real y muestra valores fijos.
  */
-const API_BASE = window.location.hostname === "" || window.location.protocol === "file:"
-  ? "http://localhost:8000"
-  : `${window.location.protocol}//${window.location.hostname}:8000`;
+// Desarrollo local: el frontend se abre como file:// o desde localhost y el
+// backend corre aparte en :8000. Desplegado (Hugging Face u otro host real):
+// el mismo servidor FastAPI sirve el frontend Y la API, asi que se usa el
+// MISMO ORIGEN (rutas relativas, API_BASE = "") -> no hay puerto :8000 en la nube.
+const _esLocal =
+  window.location.protocol === "file:" ||
+  window.location.hostname === "" ||
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1";
+const API_BASE = _esLocal
+  ? `${window.location.protocol === "file:" ? "http:" : window.location.protocol}//localhost:8000`
+  : "";
 
 async function consultarSalud() {
   const respuesta = await fetch(`${API_BASE}/health`);

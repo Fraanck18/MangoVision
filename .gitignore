@@ -1,32 +1,133 @@
+# ============================================================
+#  MangoVision — .gitignore
+#  Regla: se versiona CÓDIGO y config declarativa; NUNCA datos,
+#  pesos, secretos ni artefactos de runtime de los servicios.
+# ============================================================
+
+# ---------- Python ----------
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.installed.cfg
+*.egg
+
+# Entornos virtuales
 .venv/
 venv/
+env/
+ENV/
+
+# Cachés de herramientas
 .pytest_cache/
-mlruns/
-mlartifacts/
-*.egg-info/
-.env
-dataset_mangos/
-*.pt
-*.pth
+.mypy_cache/
+.ruff_cache/
+.pytype/
 .ipynb_checkpoints/
 
-# Bases de datos / estado runtime locales
+# Cobertura / tests
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+
+# ---------- Secretos y entorno (CRÍTICO) ----------
+# MONGO_URI, tokens de ngrok, credenciales de HDFS/MLflow, etc.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+*.authtoken
+# ngrok
+ngrok.yml
+.ngrok2/
+ngrok.log
+
+# ---------- Modelos y artefactos de ML ----------
+*.pt
+*.pth
+*.onnx
+*.h5
+*.hdf5
+*.ckpt
+*.pkl
+*.joblib
+*.safetensors
+checkpoints/
+models_saved/
+
+# MLflow (tracking local)
+mlruns/
+mlartifacts/
+
+# ---------- Datos (nunca en git) ----------
+dataset_mangos/
+# data/ contiene el manifiesto de linaje versionado; solo se ignoran
+# los subdirectorios/artefactos de runtime, no la carpeta entera.
+data/db/
+data/raw/
+data/raw_parquet/
+data/curated_results/
+*.parquet
+*.tfrecord
+
+# ---------- Servicios / Big Data (runtime local) ----------
+# Spark
+spark-warehouse/
+metastore_db/
+derby.log
+.spark/
+# HDFS / Hadoop (por si algún volumen aterriza en local)
+data-lake/
+hadoop_data/
+dfs/
+# Kafka / Zookeeper
+kafka-logs/
+zookeeper/
+# MongoDB local (Atlas es remoto, pero por si se corre local)
+mongo_data/
+*.wt
+mongod.lock
+
+# ---------- Bases de datos / estado runtime locales ----------
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+*.db-journal
 
-# Logs y temporales
+# ---------- Uploads / temporales generados en caliente ----------
+uploads/
+tmp/
+tmp_uploads/
+web/uploads/
 *.log
 *.tmp
 
-# Sistema operativo
+# ---------- Node (frontend usa vendor/ commiteado, no npm) ----------
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# ---------- Sistema operativo ----------
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Editores / IDE
+# ---------- Editores / IDE ----------
 .vscode/
 .idea/
 *.swp
-".claude/" 
+*~
+
+# ---------- Claude Code ----------
+# Se conserva la config compartida (.claude/launch.json); solo se
+# ignora lo estrictamente local de cada máquina.
+.claude/settings.local.json
+.claude/*.local.json

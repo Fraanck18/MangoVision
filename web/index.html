@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mango Vision — Panel de Análisis Térmico</title>
-<link rel="stylesheet" href="css/styles.css?v=8">
+<link rel="stylesheet" href="css/styles.css?v=9">
 <script>
   // Aplica el tema guardado ANTES de pintar, para evitar el parpadeo de tema claro -> oscuro/neon.
   // Si el usuario nunca elegio un tema, se respeta la preferencia del sistema operativo.
@@ -34,6 +34,11 @@
       <button class="nav-link" data-vista="galeria"><span class="punto-nav"></span> Imágenes Térmicas</button>
       <button class="nav-link" data-vista="clasificador-ia"><span class="punto-nav"></span> Clasificador IA</button>
       <button class="nav-link" data-vista="vista3d"><span class="punto-nav"></span> Vista 3D</button>
+    </nav>
+
+    <nav class="nav-grupo">
+      <div class="nav-titulo">CIENCIA</div>
+      <button class="nav-link" data-vista="matematicas"><span class="punto-nav"></span> Fundamentos Matemáticos</button>
     </nav>
 
     <nav class="nav-grupo">
@@ -690,6 +695,209 @@
       </div>
     </div><!-- /vista-configuracion -->
 
+    <!-- ==================== FUNDAMENTOS MATEMÁTICOS ==================== -->
+    <div id="vista-matematicas" class="oculto">
+      <div class="encabezado" style="margin-bottom: 12px;">
+        <div>
+          <h2>∑ Fundamentos Matemáticos de la Percepción Computacional</h2>
+          <p class="holo-hint" style="margin-top: 4px;">
+            Todas las funciones matemáticas que ejecuta el pipeline de visión, con la técnica de percepción
+            computacional que implementan y su origen exacto en el código. Cada fórmula corresponde 1:1 a una función
+            real del proyecto — no es material ilustrativo.
+          </p>
+        </div>
+      </div>
+
+      <!-- Mapa del pipeline -->
+      <section class="panel mate-pipeline">
+        <div class="panel-titulo"><h2>🧭 Orden del pipeline (imagen → decisión)</h2></div>
+        <div class="mate-flujo">
+          <span class="mate-flujo-paso">① Luminancia / gris</span><span class="mate-flujo-flecha">→</span>
+          <span class="mate-flujo-paso">② Filtrado (mediana + Gauss)</span><span class="mate-flujo-flecha">→</span>
+          <span class="mate-flujo-paso">③ Normalización ITR</span><span class="mate-flujo-flecha">→</span>
+          <span class="mate-flujo-paso">④ Segmentación PEDTE</span><span class="mate-flujo-flecha">→</span>
+          <span class="mate-flujo-paso">⑤ Descriptores (HOG + espaciales)</span><span class="mate-flujo-flecha">→</span>
+          <span class="mate-flujo-paso">⑥ Clasificación (SVM / Softmax)</span>
+        </div>
+      </section>
+
+      <!-- ===== BLOQUE A: HOG ===== -->
+      <section class="panel">
+        <div class="panel-titulo">
+          <h2>📐 A · HOG — Histograma de Gradientes Orientados</h2>
+          <span class="mate-fuente">src/models/baseline_svm.py</span>
+        </div>
+        <p class="holo-hint" style="margin:0 0 16px;">
+          Descriptor clásico de forma/textura usado como línea base frente a la red profunda. Codifica la distribución
+          local de orientaciones del borde térmico.
+        </p>
+        <div class="mate-grid">
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Conversión a escala de grises</span><span class="formula-fn">rgb2gray()</span></div>
+            <math display="block"><mrow><mi>I</mi><mo>=</mo><mn>0.2125</mn><mi>R</mi><mo>+</mo><mn>0.7154</mn><mi>G</mi><mo>+</mo><mn>0.0721</mn><mi>B</mi></mrow></math>
+            <p class="formula-nota">Luminancia perceptual (coef. Rec. 709 de <code>skimage</code>). El gradiente se calcula sobre esta intensidad escalar, no sobre color.</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Gradiente por diferencias finitas</span><span class="formula-fn">hog()</span></div>
+            <math display="block"><mrow><msub><mi>G</mi><mi>x</mi></msub><mo>=</mo><mi>I</mi><mo>(</mo><mi>x</mi><mo>+</mo><mn>1</mn><mo>,</mo><mi>y</mi><mo>)</mo><mo>−</mo><mi>I</mi><mo>(</mo><mi>x</mi><mo>−</mo><mn>1</mn><mo>,</mo><mi>y</mi><mo>)</mo><mo>,</mo><mspace width="0.6em"/><msub><mi>G</mi><mi>y</mi></msub><mo>=</mo><mi>I</mi><mo>(</mo><mi>x</mi><mo>,</mo><mi>y</mi><mo>+</mo><mn>1</mn><mo>)</mo><mo>−</mo><mi>I</mi><mo>(</mo><mi>x</mi><mo>,</mo><mi>y</mi><mo>−</mo><mn>1</mn><mo>)</mo></mrow></math>
+            <p class="formula-nota">Kernel <code>[−1, 0, +1]</code> horizontal y vertical: aproxima ∂I/∂x y ∂I/∂y.</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Magnitud y orientación</span><span class="formula-fn">orientations=9</span></div>
+            <math display="block"><mrow><mi>m</mi><mo>=</mo><msqrt><mrow><msubsup><mi>G</mi><mi>x</mi><mn>2</mn></msubsup><mo>+</mo><msubsup><mi>G</mi><mi>y</mi><mn>2</mn></msubsup></mrow></msqrt><mo>,</mo><mspace width="0.8em"/><mi>θ</mi><mo>=</mo><mi>atan2</mi><mo>(</mo><msub><mi>G</mi><mi>y</mi></msub><mo>,</mo><msub><mi>G</mi><mi>x</mi></msub><mo>)</mo><mspace width="0.4em"/><mo>mod</mo><mspace width="0.2em"/><mi>π</mi></mrow></math>
+            <p class="formula-nota">Cada píxel aporta una magnitud <em>m</em> y un ángulo <em>θ</em> plegado a [0, π): gradiente sin signo.</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Histograma por celda (voto ponderado)</span><span class="formula-fn">pixels_per_cell=(8,8)</span></div>
+            <math display="block"><mrow><msub><mi>h</mi><mi>b</mi></msub><mo>=</mo><munder><mo>∑</mo><mrow><mo>(</mo><mi>x</mi><mo>,</mo><mi>y</mi><mo>)</mo><mo>∈</mo><mtext>celda</mtext></mrow></munder><mi>m</mi><mo>(</mo><mi>x</mi><mo>,</mo><mi>y</mi><mo>)</mo><mo>·</mo><mn>1</mn><mo>[</mo><mi>θ</mi><mo>(</mo><mi>x</mi><mo>,</mo><mi>y</mi><mo>)</mo><mo>∈</mo><msub><mi>bin</mi><mi>b</mi></msub><mo>]</mo></mrow></math>
+            <p class="formula-nota">Celdas de 8×8 px; 9 <em>bins</em> reparten [0, π). Cada píxel vota por su orientación pesando con su magnitud.</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Normalización de bloque L2-Hys</span><span class="formula-fn">block_norm="L2-Hys"</span></div>
+            <math display="block"><mrow><mi>v</mi><mo>←</mo><mfrac><mi>v</mi><msqrt><mrow><msubsup><mrow><mo>‖</mo><mi>v</mi><mo>‖</mo></mrow><mn>2</mn><mn>2</mn></msubsup><mo>+</mo><msup><mi>ε</mi><mn>2</mn></msup></mrow></msqrt></mfrac><mo>,</mo><mspace width="0.6em"/><msub><mi>v</mi><mi>i</mi></msub><mo>←</mo><mi>min</mi><mo>(</mo><msub><mi>v</mi><mi>i</mi></msub><mo>,</mo><mn>0.2</mn><mo>)</mo></mrow></math>
+            <p class="formula-nota">Bloques de 2×2 celdas: normaliza en L2, recorta (<em>clip</em>) a 0.2 y renormaliza. Da invariancia a contraste e iluminación local.</p>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ===== BLOQUE B: Decodificación a ITR ===== -->
+      <section class="panel">
+        <div class="panel-titulo">
+          <h2>🌡 B · Decodificación pseudo-color → ITR</h2>
+          <span class="mate-fuente">src/domain_physics/thermal_inertia.py</span>
+        </div>
+        <p class="holo-hint" style="margin:0 0 16px;">
+          La cámara FLIR de consumo entrega JPEG en pseudo-color, no radiometría. Se recupera un Índice de Intensidad
+          Térmica Relativa (ITR ∈ [0,1]) robusto por imagen, sin asumir °C absolutos.
+        </p>
+        <div class="mate-grid">
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Luminancia perceptual (Rec. 601)</span><span class="formula-fn">normalizar_itr_local()</span></div>
+            <math display="block"><mrow><mi>Y</mi><mo>=</mo><mn>0.299</mn><mi>R</mi><mo>+</mo><mn>0.587</mn><mi>G</mi><mo>+</mo><mn>0.114</mn><mi>B</mi></mrow></math>
+            <p class="formula-nota">La paleta Ironbow es monótona frío→caliente, así que la luminancia preserva el orden térmico relativo.</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Normalización Min-Max local</span><span class="formula-fn">normalizar_itr_local()</span></div>
+            <math display="block"><mrow><mi>ITR</mi><mo>=</mo><mfrac><mrow><mi>I</mi><mo>−</mo><msub><mi>I</mi><mi>min</mi></msub></mrow><mrow><msub><mi>I</mi><mi>max</mi></msub><mo>−</mo><msub><mi>I</mi><mi>min</mi></msub></mrow></mfrac></mrow></math>
+            <p class="formula-nota">Cada imagen se auto-referencia: 0 = píxel más frío de <em>esa</em> foto, 1 = el más caliente. Robusto a cambios de cámara/brillo global.</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Suavizado Gaussiano (anti-bloques JPEG)</span><span class="formula-fn">suavizar_bloques_jpeg()</span></div>
+            <math display="block"><mrow><mi>G</mi><mo>(</mo><mi>x</mi><mo>,</mo><mi>y</mi><mo>)</mo><mo>=</mo><mfrac><mn>1</mn><mrow><mn>2</mn><mi>π</mi><msup><mi>σ</mi><mn>2</mn></msup></mrow></mfrac><msup><mi>e</mi><mrow><mo>−</mo><mfrac><mrow><msup><mi>x</mi><mn>2</mn></msup><mo>+</mo><msup><mi>y</mi><mn>2</mn></msup></mrow><mrow><mn>2</mn><msup><mi>σ</mi><mn>2</mn></msup></mrow></mfrac></mrow></msup><mo>,</mo><mspace width="0.6em"/><mi>σ</mi><mo>=</mo><mn>0.5</mn></mrow></math>
+            <p class="formula-nota">Convolución 3×3 aplicada tras decodificar: atenúa los bloques de cuantificación 8×8 del JPEG sin borrar gradientes internos reales.</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Filtro de mediana (ruido impulsivo)</span><span class="formula-fn">limpiar_ruido_impulsivo()</span></div>
+            <math display="block"><mrow><msup><mi>I</mi><mo>′</mo></msup><mo>(</mo><mi>x</mi><mo>,</mo><mi>y</mi><mo>)</mo><mo>=</mo><munder><mi>mediana</mi><mrow><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo><mo>∈</mo><msub><mi>N</mi><mrow><mn>5</mn><mo>×</mo><mn>5</mn></mrow></msub></mrow></munder><mo>{</mo><mi>I</mi><mo>(</mo><mi>i</mi><mo>,</mo><mi>j</mi><mo>)</mo><mo>}</mo></mrow></math>
+            <p class="formula-nota">Elige el valor mediano de la vecindad 5×5. La prueba de normalidad D'Agostino <em>K²</em> sobre el residuo confirma que el ruido es impulsivo (no gaussiano):</p>
+            <math display="block"><mrow><msup><mi>K</mi><mn>2</mn></msup><mo>=</mo><msubsup><mi>Z</mi><mn>1</mn><mn>2</mn></msubsup><mo>(</mo><msqrt><msub><mi>b</mi><mn>1</mn></msub></msqrt><mo>)</mo><mo>+</mo><msubsup><mi>Z</mi><mn>2</mn><mn>2</mn></msubsup><mo>(</mo><msub><mi>b</mi><mn>2</mn></msub><mo>)</mo></mrow></math>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Ecualización de histograma (CDF)</span><span class="formula-fn">ecualizar_contraste()</span></div>
+            <math display="block"><mrow><msub><mi>s</mi><mi>k</mi></msub><mo>=</mo><mo>(</mo><mi>L</mi><mo>−</mo><mn>1</mn><mo>)</mo><munderover><mo>∑</mo><mrow><mi>j</mi><mo>=</mo><mn>0</mn></mrow><mi>k</mi></munderover><mfrac><msub><mi>n</mi><mi>j</mi></msub><mi>N</mi></mfrac></mrow></math>
+            <p class="formula-nota">Reasigna la luminancia (canal Y de YCrCb) según su función de distribución acumulada: realza gradientes internos comprimidos en rango estrecho.</p>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ===== BLOQUE C: PEDTE espacial ===== -->
+      <section class="panel">
+        <div class="panel-titulo">
+          <h2>🔬 C · PEDTE — Perfil Espacial de Distribución Térmica</h2>
+          <span class="mate-fuente">src/domain_physics/thermal_inertia.py</span>
+        </div>
+        <p class="holo-hint" style="margin:0 0 16px;">
+          Con un único frame estático no se mide la dinámica dT/dt de la Ley de Newton; se explota su <strong>huella
+          espacial</strong>: el gradiente centro-periferia y las anomalías locales de ITR.
+        </p>
+        <div class="mate-grid">
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Centroide del fruto (componente conexa)</span><span class="formula-fn">segmentar_fruto()</span></div>
+            <math display="block"><mrow><mo>(</mo><msub><mi>c</mi><mi>y</mi></msub><mo>,</mo><msub><mi>c</mi><mi>x</mi></msub><mo>)</mo><mo>=</mo><mrow><mo>(</mo><mfrac><mn>1</mn><mrow><mo>|</mo><mi>M</mi><mo>|</mo></mrow></mfrac><munder><mo>∑</mo><mi>M</mi></munder><msub><mi>y</mi><mi>i</mi></msub><mo>,</mo><mspace width="0.3em"/><mfrac><mn>1</mn><mrow><mo>|</mo><mi>M</mi><mo>|</mo></mrow></mfrac><munder><mo>∑</mo><mi>M</mi></munder><msub><mi>x</mi><mi>i</mi></msub><mo>)</mo></mrow></mrow></math>
+            <p class="formula-nota">La máscara <em>M</em> es la mayor componente conexa de píxeles calientes (etiquetado <code>ndimage.label</code>). Su centroide es la media de coordenadas.</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Distancia radial normalizada</span><span class="formula-fn">gradiente_centro_periferia()</span></div>
+            <math display="block"><mrow><msub><mi>r</mi><mi>i</mi></msub><mo>=</mo><mfrac><msqrt><mrow><msup><mrow><mo>(</mo><msub><mi>y</mi><mi>i</mi></msub><mo>−</mo><msub><mi>c</mi><mi>y</mi></msub><mo>)</mo></mrow><mn>2</mn></msup><mo>+</mo><msup><mrow><mo>(</mo><msub><mi>x</mi><mi>i</mi></msub><mo>−</mo><msub><mi>c</mi><mi>x</mi></msub><mo>)</mo></mrow><mn>2</mn></msup></mrow></msqrt><msub><mi>r</mi><mi>max</mi></msub></mfrac></mrow></math>
+            <p class="formula-nota">Distancia euclídea de cada píxel al centroide, escalada al radio máximo → <em>r</em> ∈ [0,1] define anillos de centro y periferia.</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Gradiente térmico centro-periferia</span><span class="formula-fn">gradiente_centro_periferia()</span></div>
+            <math display="block"><mrow><msub><mi>Δ</mi><mrow><mi>cp</mi></mrow></msub><mo>=</mo><msub><mover><mi>ITR</mi><mo>‾</mo></mover><mrow><mi>r</mi><mo>≤</mo><mn>0.4</mn></mrow></msub><mo>−</mo><msub><mover><mi>ITR</mi><mo>‾</mo></mover><mrow><mi>r</mi><mo>≥</mo><mn>0.7</mn></mrow></msub></mrow></math>
+            <p class="formula-nota">Feature núcleo de PEDTE: ITR medio del centro menos el de la periferia. Positivo = centro más caliente (retención heterogénea de calor).</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Anomalía local por Z-score</span><span class="formula-fn">extraer_perfil_espacial_termico()</span></div>
+            <math display="block"><mrow><msub><mi>z</mi><mi>i</mi></msub><mo>=</mo><mfrac><mrow><msub><mover><mi>ITR</mi><mo>‾</mo></mover><mi>fruto</mi></msub><mo>−</mo><msub><mi>ITR</mi><mi>i</mi></msub></mrow><msub><mi>σ</mi><mi>fruto</mi></msub></mfrac><mo>,</mo><mspace width="0.6em"/><mtext>anómalo si</mtext><mspace width="0.3em"/><msub><mi>z</mi><mi>i</mi></msub><mo>≥</mo><mn>1.5</mn></mrow></math>
+            <p class="formula-nota">Cada píxel se compara con la media/σ del propio fruto. La fracción de área con <em>z</em> ≥ 1.5 mide zonas anómalamente frías.</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Gradiente térmico anómalo (alerta)</span><span class="formula-fn">gradiente_termico_anomalo() · clasificar_anomalia()</span></div>
+            <math display="block"><mrow><mi>Δ</mi><mo>=</mo><mo>|</mo><msub><mi>ITR</mi><mi>ref</mi></msub><mo>−</mo><msub><mi>ITR</mi><mi>susp</mi></msub><mo>|</mo><mo>,</mo><mspace width="0.6em"/><mtext>alerta si</mtext><mspace width="0.3em"/><mi>max</mi><mo>(</mo><mi>Δ</mi><mo>)</mo><mo>≥</mo><mn>0.05</mn></mrow></math>
+            <p class="formula-nota">Comparación espacial intra-imagen (no temporal): diferencia absoluta de ITR entre tejido de referencia y región sospechosa.</p>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ===== BLOQUE D: Clasificación y decisión ===== -->
+      <section class="panel">
+        <div class="panel-titulo">
+          <h2>🧠 D · Clasificación y decisión</h2>
+          <span class="mate-fuente">baseline_svm.py · api · dashboard</span>
+        </div>
+        <p class="holo-hint" style="margin:0 0 16px;">
+          Los descriptores (HOG y espaciales) se estandarizan y alimentan al clasificador; la confianza mostrada en la
+          UI es un Softmax sobre los logits.
+        </p>
+        <div class="mate-grid">
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Estandarización de features</span><span class="formula-fn">StandardScaler</span></div>
+            <math display="block"><mrow><mi>z</mi><mo>=</mo><mfrac><mrow><mi>x</mi><mo>−</mo><mi>μ</mi></mrow><mi>σ</mi></mfrac></mrow></math>
+            <p class="formula-nota">Cada dimensión del descriptor se centra (media 0) y escala (varianza 1) antes del SVM, para que ninguna feature domine por su rango.</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">SVM lineal (pérdida hinge)</span><span class="formula-fn">LinearSVC</span></div>
+            <math display="block"><mrow><munder><mi>min</mi><mrow><mi>w</mi><mo>,</mo><mi>b</mi></mrow></munder><mspace width="0.3em"/><mfrac><mn>1</mn><mn>2</mn></mfrac><msup><mrow><mo>‖</mo><mi>w</mi><mo>‖</mo></mrow><mn>2</mn></msup><mo>+</mo><mi>C</mi><munder><mo>∑</mo><mi>i</mi></munder><mi>max</mi><mo>(</mo><mn>0</mn><mo>,</mo><mn>1</mn><mo>−</mo><msub><mi>y</mi><mi>i</mi></msub><mo>(</mo><msup><mi>w</mi><mo>⊤</mo></msup><msub><mi>x</mi><mi>i</mi></msub><mo>+</mo><mi>b</mi><mo>)</mo><mo>)</mo></mrow></math>
+            <p class="formula-nota">Maximiza el margen (½‖w‖²) penalizando las violaciones con la <em>hinge loss</em>. <em>C</em> equilibra margen vs. errores de entrenamiento.</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Softmax (confianza de la predicción)</span><span class="formula-fn">confianzaUltimaImagen</span></div>
+            <math display="block"><mrow><msub><mi>p</mi><mi>i</mi></msub><mo>=</mo><mfrac><msup><mi>e</mi><msub><mi>z</mi><mi>i</mi></msub></msup><mrow><munder><mo>∑</mo><mi>j</mi></munder><msup><mi>e</mi><msub><mi>z</mi><mi>j</mi></msub></msup></mrow></mfrac></mrow></math>
+            <p class="formula-nota">Convierte los logits en una distribución de probabilidad sobre {Verde, Maduro, Sobre-maduro}. El máximo es la confianza que ve el usuario.</p>
+          </div>
+
+          <div class="formula-card">
+            <div class="formula-cab"><span class="formula-tecnica">Estadísticos de distribución del lote</span><span class="formula-fn">aplicarDiagnosticoAlEstado()</span></div>
+            <math display="block"><mrow><mi>μ</mi><mo>=</mo><mfrac><mn>1</mn><mi>n</mi></mfrac><munder><mo>∑</mo><mi>i</mi></munder><msub><mi>x</mi><mi>i</mi></msub><mo>,</mo><mspace width="0.8em"/><mi>σ</mi><mo>=</mo><msqrt><mrow><mfrac><mn>1</mn><mi>n</mi></mfrac><munder><mo>∑</mo><mi>i</mi></munder><msup><mrow><mo>(</mo><msub><mi>x</mi><mi>i</mi></msub><mo>−</mo><mi>μ</mi><mo>)</mo></mrow><mn>2</mn></msup></mrow></msqrt></mrow></math>
+            <p class="formula-nota">ITR medio y desviación del lote que alimentan las tarjetas del dashboard y la gráfica de distribución térmica.</p>
+          </div>
+
+        </div>
+      </section>
+
+    </div><!-- /vista-matematicas -->
+
   </main>
 </div>
 
@@ -720,6 +928,6 @@
 <script src="js/uiRenderer.js?v=4"></script>
 <script src="js/mapaTermicoRenderer.js?v=2"></script>
 <script src="js/galeriaImagenesRenderer.js?v=1"></script>
-<script src="js/main.js?v=5"></script>
+<script src="js/main.js?v=6"></script>
 </body>
 </html>
